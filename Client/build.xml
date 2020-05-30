@@ -1,15 +1,28 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<project basedir="." name="spin-client">
+<project basedir="." default="clean-build-standalone" name="spin-client">
 
+    <property name="workspace-parent" value=".."/>
     <property name="workspace" value="."/>
     <property name="source" value="${workspace}/src"/>
+    <property name="dependencies-global" value="${workspace-parent}/lib"/>
     <property name="build-dir" value="${workspace}/build"/>
     <property name="built-sources" value="${build-dir}/main"/>
     <property name="dist" value="${workspace}/dist"/>
 
+    <path id="classpath-test">
+        <pathelement location="${dependencies-global}/junit-4.12.jar"/>
+    </path>
+
+    <target name="clean-build-standalone" depends="clean, build-standalone"/>
+
     <target name="build-standalone">
         <mkdir dir="${built-sources}"/>
-        <javac debug="true" debuglevel="source,lines,vars" includeantruntime="false" release="9" srcdir="${source}" destdir="${built-sources}" includes="**/*.java,module-info.java"/>
+        <javac debug="true" debuglevel="source,lines,vars" includeantruntime="false" release="9" srcdir="${source}" destdir="${built-sources}" includes="**/*.java,module-info.java">
+            <modulepath>
+                <pathelement location="${built-sources}"/>
+                <path refid="classpath-test"/>
+            </modulepath>
+        </javac>
 
         <jar jarfile="${dist}/spin-standalone.jar" basedir="${built-sources}">
             <manifest>

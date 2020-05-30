@@ -26,4 +26,9 @@ public class Example2Test {
         resource.hit();
         System.out.println(resource.getHits());
     }
+
+    @Override
+    public String toString() {
+        return this.getClass().getName();
+    }
 }

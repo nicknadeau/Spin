@@ -1,20 +1,22 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <project basedir="." default="clean-build-raw" name="spin-example">
 
+    <property name="workspace-parent" value=".."/>
     <property name="workspace" value="."/>
     <property name="source" value="${workspace}/src"/>
     <property name="test" value="${workspace}/test"/>
-    <property name="dependencies" value="${workspace}/lib"/>
+    <property name="dependencies-local" value="${workspace}/lib"/>
+    <property name="dependencies-global" value="${workspace-parent}/lib"/>
     <property name="build-dir" value="${workspace}/build"/>
     <property name="built-sources" value="${build-dir}/src"/>
     <property name="built-tests" value="${build-dir}/test"/>
 
-    <target name="clean-build-raw" depends="clean, build-raw"/>
-
     <path id="classpath-test">
-        <pathelement location="${dependencies}/junit-4.12.jar"/>
-        <pathelement location="${dependencies}/hamcrest-all-1.3.jar"/>
+        <pathelement location="${dependencies-global}/junit-4.12.jar"/>
+        <pathelement location="${dependencies-local}/hamcrest-all-1.3.jar"/>
     </path>
+
+    <target name="clean-build-raw" depends="clean, build-raw"/>
 
     <target name="build-raw">
         <mkdir dir="${built-sources}"/>

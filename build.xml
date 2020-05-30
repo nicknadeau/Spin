@@ -2,6 +2,7 @@
 <project basedir="." name="spin">
 
     <property name="workspace" value="."/>
+    <property name="pack" value="${workspace}/pack"/>
     <property name="clientModule" value="${workspace}/Client"/>
     <property name="exampleModule" value="${workspace}/Example"/>
 
@@ -31,6 +32,8 @@
             <property name="compile.debug" value="${compile.debug}"/>
         </ant>
         <echo message="Example module cleaned!"/>
+
+        <delete dir="${pack}"/>
     </target>
 
 </project>
