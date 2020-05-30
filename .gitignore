@@ -2,4 +2,5 @@
 *.iml
 build
 dist
+out
 .ant-targets-build.xml

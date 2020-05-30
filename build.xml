@@ -3,10 +3,18 @@
 
     <property name="workspace" value="."/>
     <property name="clientModule" value="${workspace}/Client"/>
+    <property name="exampleModule" value="${workspace}/Example"/>
 
     <target name="build-standalone">
         <echo message="Building Client module..."/>
         <ant inheritAll="false" antfile="${clientModule}/build.xml" target="build-standalone">
+            <property name="compile.debug" value="${compile.debug}"/>
+        </ant>
+    </target>
+
+    <target name="build-example-raw">
+        <echo message="Building Example module..."/>
+        <ant inheritAll="false" antfile="${exampleModule}/build.xml" target="clean-build-raw">
             <property name="compile.debug" value="${compile.debug}"/>
         </ant>
     </target>
@@ -16,6 +24,13 @@
         <ant inheritAll="false" antfile="${clientModule}/build.xml" target="clean">
             <property name="compile.debug" value="${compile.debug}"/>
         </ant>
+        <echo message="Client module cleaned!"/>
+
+        <echo message="Cleaning Example module..."/>
+        <ant inheritAll="false" antfile="${exampleModule}/build.xml" target="clean">
+            <property name="compile.debug" value="${compile.debug}"/>
+        </ant>
+        <echo message="Example module cleaned!"/>
     </target>
 
 </project>
