@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project basedir="." name="spin-client">
+
+    <property name="workspace" value="."/>
+    <property name="source" value="${workspace}/src"/>
+    <property name="build-dir" value="${workspace}/build"/>
+    <property name="built-sources" value="${build-dir}/main"/>
+    <property name="dist" value="${workspace}/dist"/>
+
+    <target name="build-standalone">
+        <mkdir dir="${built-sources}"/>
+        <javac debug="true" debuglevel="source,lines,vars" includeantruntime="false" release="9" srcdir="${source}" destdir="${built-sources}" includes="**/*.java,module-info.java"/>
+
+        <jar jarfile="${dist}/spin-standalone.jar" basedir="${built-sources}">
+            <manifest>
+                <attribute name="Automatic-Module-Name" value="spin.client.standalone" />
+                <attribute name="Main-Class" value="spin.client.standalone.StandaloneClient" />
+            </manifest>
+        </jar>
+
+        <echo message=" "/>
+        <echo message="Newly built jar can be found in directory: ${dist}/"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build-dir}"/>
+        <delete dir="${dist}"/>
+    </target>
+
+</project>
