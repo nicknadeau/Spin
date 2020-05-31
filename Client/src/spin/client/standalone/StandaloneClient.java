@@ -4,13 +4,13 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.text.DecimalFormat;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 public final class StandaloneClient {
     private static final Logger LOGGER = Logger.forClass(StandaloneClient.class);
-    private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.####");
     private static final int EXECUTOR_THREAD_CAPACITY = 100;
 
     /**
@@ -41,14 +41,10 @@ public final class StandaloneClient {
             }
 
             if (!Boolean.parseBoolean(System.getProperty("enable_logger"))) {
-                LOGGER.disable();
+                Logger.disable();
             }
 
             int numThreads = Integer.parseInt(System.getProperty("num_threads"));
-
-            List<TestExecutor> executors = createExecutors(numThreads);
-            List<Thread> executorThreads = createExecutorThreads(executors);
-            startExecutorThreads(executorThreads);
 
             logArguments(args);
 
@@ -93,9 +89,11 @@ public final class StandaloneClient {
             }
 
             // Load all of the submitted test classes.
+            Map<Class<?>, Integer> testsCount = new HashMap<>();
             Class<?>[] testClasses = new Class[classes.length];
             for (int i = 0; i < classes.length; i++) {
                 testClasses[i] = classLoader.loadClass(classes[i]);
+                testsCount.put(testClasses[i], 0);
             }
 
             // Split out each of the test methods declared in the given test classes.
@@ -104,10 +102,21 @@ public final class StandaloneClient {
                 for (Method method : testClass.getDeclaredMethods()) {
                     if (method.getAnnotation(org.junit.Test.class) != null) {
                         testMethods.add(new TestExecutor.TestMethod(testClass, method));
+                        int currCount = testsCount.get(testClass);
+                        testsCount.put(testClass, currCount + 1);
                     }
                 }
             }
             logTestMethods(testMethods);
+
+            // Create the executor threads and the outputter thread and start them all.
+            List<BlockingQueue<TestExecutor.TestResult>> resultQueues = createTestResultQueues(numThreads);
+            List<TestExecutor> executors = createExecutors(resultQueues);
+            List<Thread> executorThreads = createExecutorThreads(executors);
+            ResultOutputter resultOutputter = ResultOutputter.outputter(resultQueues, testsCount);
+            Thread outputterThread = new Thread(resultOutputter, "ResultOutputter");
+            startExecutorThreads(executorThreads);
+            outputterThread.start();
 
             // Execute each of the declared test methods.
             int index = 0;
@@ -122,21 +131,32 @@ public final class StandaloneClient {
                 }
             }
 
-            List<TestExecutor.TestResult> results = drainResults(executors, testMethods.size());
-            shutdownExecutors(executors);
+            LOGGER.log("Finished submitting all tests to executors.");
 
-            outputTestResults(produceTestClassStatsMap(results));
+            // Wait until the outputter finishes and then it is safe to shut down the executors.
+            outputterThread.join();
+            shutdownExecutors(executorThreads, executors);
 
         } catch (Throwable t) {
             System.err.println("Unexpected Error!");
             t.printStackTrace();
+        } finally {
+            LOGGER.log("Exiting.");
         }
     }
 
-    private static List<TestExecutor> createExecutors(int num) {
+    private static List<BlockingQueue<TestExecutor.TestResult>> createTestResultQueues(int numQueues) {
+        List<BlockingQueue<TestExecutor.TestResult>> queues = new ArrayList<>();
+        for (int i = 0; i < numQueues; i++) {
+            queues.add(new LinkedBlockingQueue<>());
+        }
+        return queues;
+    }
+
+    private static List<TestExecutor> createExecutors(List<BlockingQueue<TestExecutor.TestResult>> resultsQueues) {
         List<TestExecutor> executors = new ArrayList<>();
-        for (int i = 0; i < num; i++) {
-            executors.add(TestExecutor.withCapacity(EXECUTOR_THREAD_CAPACITY));
+        for (BlockingQueue<TestExecutor.TestResult> resultsQueue : resultsQueues) {
+            executors.add(TestExecutor.withCapacity(EXECUTOR_THREAD_CAPACITY, resultsQueue));
         }
         return executors;
     }
@@ -158,50 +178,13 @@ public final class StandaloneClient {
         }
     }
 
-    private static List<TestExecutor.TestResult> drainResults(List<TestExecutor> executors, int numToDrain) {
-        List<TestExecutor.TestResult> results = new ArrayList<>();
-
-        int numDrained = 0;
-        while (numDrained < numToDrain) {
-            for (TestExecutor executor : executors) {
-                TestExecutor.TestResult result = executor.getNextResult();
-                if (result != null) {
-                    results.add(result);
-                    numDrained++;
-                }
-                if (numDrained >= numToDrain) {
-                    break;
-                }
-            }
-        }
-
-        return results;
-    }
-
-    private static void shutdownExecutors(List<TestExecutor> executors) {
+    private static void shutdownExecutors(List<Thread> executorThreads, List<TestExecutor> executors) throws InterruptedException {
         for (TestExecutor executor : executors) {
             executor.shutdown();
         }
-    }
-
-    private static Map<Class<?>, TestClassStats> produceTestClassStatsMap(List<TestExecutor.TestResult> results) {
-        Map<Class<?>, TestClassStats> map = new HashMap<>();
-
-        for (TestExecutor.TestResult result : results) {
-            if (!map.containsKey(result.testClass)) {
-                map.put(result.testClass, new TestClassStats());
-            }
-
-            TestClassStats testClassStats = map.get(result.testClass);
-            testClassStats.testTimes.put(result.testMethod, result.durationNanos);
-            if (result.successful) {
-                testClassStats.successfulTestMethods.add(result.testMethod);
-            } else {
-                testClassStats.failedTestMethods.add(result.testMethod);
-            }
+        for (Thread executor : executorThreads) {
+            executor.join();
         }
-
-        return map;
     }
 
     private static void logArguments(String[] args) {
@@ -225,56 +208,5 @@ public final class StandaloneClient {
                 + "\n\tnum tests: the total number of test classes to be run."
                 + "\n\ttest class: a canonical path to the .class test class file to be run."
                 + "\n\tdependency: a canonical path to the .jar dependency or a directory of .class file dependencies.";
-    }
-
-    private static void outputTestResults(Map<Class<?>, TestClassStats> testClassStatsMap) {
-        System.out.println("\n===============================================================");
-
-        int suiteNumSuccesses = 0;
-        int suiteNumFails = 0;
-        long suiteTimeTotal = 0;
-
-        for (Map.Entry<Class<?>, TestClassStats> entry : testClassStatsMap.entrySet()) {
-            TestClassStats testClassStats = entry.getValue();
-            int numSuccesses = testClassStats.successfulTestMethods.size();
-            int numFails = testClassStats.failedTestMethods.size();
-            long classTimeTotal = testClassStats.getTotalTestTime();
-
-            System.out.println(entry.getKey().getName() + ": tests [" + (numSuccesses + numFails) + "] successes: " + numSuccesses + ", failures: " + numFails + ", seconds: " + nanosToSecondsString(classTimeTotal));
-
-            for (Method success : testClassStats.successfulTestMethods) {
-                System.out.println(success.getName() + " [successful], seconds: " + nanosToSecondsString(testClassStats.testTimes.get(success)));
-            }
-            for (Method failed : testClassStats.failedTestMethods) {
-                System.out.println(failed.getName() + " [failed], seconds: " + nanosToSecondsString(testClassStats.testTimes.get(failed)));
-            }
-
-            suiteNumSuccesses += numSuccesses;
-            suiteNumFails += numFails;
-            suiteTimeTotal += classTimeTotal;
-
-            System.out.println();
-        }
-
-        System.out.println("Total tests [" + (suiteNumFails + suiteNumSuccesses) + "] successes: " + suiteNumSuccesses + ", failures: " + suiteNumFails + ", seconds: " + nanosToSecondsString(suiteTimeTotal));
-        System.out.println("===============================================================");
-    }
-
-    private static String nanosToSecondsString(long nanos) {
-        return DECIMAL_FORMAT.format((double) nanos / 1_000_000_000L);
-    }
-
-    private static class TestClassStats {
-        private final List<Method> successfulTestMethods = new ArrayList<>();
-        private final List<Method> failedTestMethods = new ArrayList<>();
-        private final Map<Method, Long> testTimes = new HashMap<>();
-
-        private long getTotalTestTime() {
-            long sum = 0;
-            for (long time : this.testTimes.values()) {
-                sum += time;
-            }
-            return sum;
-        }
     }
 }

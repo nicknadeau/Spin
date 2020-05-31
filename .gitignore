@@ -3,4 +3,5 @@
 build
 dist
 out
+pack
 .ant-targets-build.xml

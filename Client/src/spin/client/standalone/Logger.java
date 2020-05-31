@@ -1,8 +1,8 @@
 package spin.client.standalone;
 
 public final class Logger {
+    private static boolean enabled = true;
     private final String className;
-    private boolean enabled = true;
 
     private Logger(String className) {
         if (className == null) {
@@ -15,16 +15,16 @@ public final class Logger {
         return new Logger(logClass.getName());
     }
 
-    public void disable() {
-        this.enabled = false;
+    public static void disable() {
+        enabled = false;
     }
 
-    public void enable() {
-        this.enabled =true;
+    public static void enable() {
+        enabled =true;
     }
 
     public void log(String message) {
-        if (this.enabled) {
+        if (enabled) {
             System.out.println(this.className + ": " + message);
         }
     }

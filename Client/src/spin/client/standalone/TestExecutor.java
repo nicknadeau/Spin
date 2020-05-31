@@ -2,6 +2,7 @@ package spin.client.standalone;
 
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -11,17 +12,22 @@ import java.util.concurrent.TimeUnit;
  * results into a queue that can be polled by a consumer.
  */
 public final class TestExecutor implements Runnable {
+    private static final Logger LOGGER = Logger.forClass(TestExecutor.class);
     private final Object monitor = new Object();
     private final Queue<TestMethod> tests = new LinkedList<>();
-    private final Queue<TestResult> results = new LinkedList<>();
+    private final BlockingQueue<TestResult> results;
     private final int capacity;
     private volatile boolean isAlive = true;
 
-    private TestExecutor(int capacity) {
+    private TestExecutor(int capacity, BlockingQueue<TestResult> results) {
         if (capacity < 1) {
             throw new IllegalArgumentException("capacity must be positive but was: " + capacity);
         }
+        if (results == null) {
+            throw new NullPointerException("results must be non-null.");
+        }
         this.capacity = capacity;
+        this.results = results;
     }
 
     /**
@@ -29,20 +35,25 @@ public final class TestExecutor implements Runnable {
      * backlog tests to run. Note that the executor can run more tests than this number, this number is a maximum that
      * can be in the executor waiting to be run at one time.
      *
+     * The executor will place each new result when it is finished running a test into the given queue.
+     *
      * @param capacity the capacity of this executor.
+     * @param results The queue that all results are placed in when done by this executor.
      * @return the new executor.
      */
-    public static TestExecutor withCapacity(int capacity) {
-        return new TestExecutor(capacity);
+    public static TestExecutor withCapacity(int capacity, BlockingQueue<TestResult> results) {
+        return new TestExecutor(capacity, results);
     }
 
     @Override
     public void run() {
         try {
             while (this.isAlive) {
+                LOGGER.log("[" + Thread.currentThread().getName() + "] Waiting for new test method to be loaded...");
                 TestMethod testMethod = fetchNextTestMethod();
 
                 if (testMethod != null) {
+                    LOGGER.log("[" + Thread.currentThread().getName() + "] Found new test method to run.");
                     TestResult result;
 
                     long startTime = System.nanoTime();
@@ -60,10 +71,12 @@ public final class TestExecutor implements Runnable {
                     synchronized (this.monitor) {
                         this.results.add(result);
                     }
+                    LOGGER.log("[" + Thread.currentThread().getName() + "] Completed running test " + testMethod.method.getName() + " in class " + testMethod.testClass.getName());
                 }
             }
         } finally {
             this.isAlive = false;
+            LOGGER.log("[" + Thread.currentThread().getName() + "] Exiting.");
         }
     }
 
@@ -106,18 +119,6 @@ public final class TestExecutor implements Runnable {
             } else {
                 return false;
             }
-        }
-    }
-
-    /**
-     * Returns the next test result if a result was available or null if no result is available. This method does not
-     * block but returns immediately.
-     *
-     * @return the next result or null if none.
-     */
-    public TestResult getNextResult() {
-        synchronized (this.monitor) {
-            return (this.results.isEmpty()) ? null : this.results.poll();
         }
     }
 
