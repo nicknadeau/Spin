@@ -1,7 +1,6 @@
 package spin.client.standalone;
 
 import java.io.File;
-import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
@@ -11,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 
 public final class StandaloneClient {
     private static final Logger LOGGER = Logger.forClass(StandaloneClient.class);
-    private static final int EXECUTOR_THREAD_CAPACITY = 100;
+    private static final int SYSTEM_CAPACITY = 100;
 
     /**
      * We expect to be given N test classes and M dependencies.
@@ -65,6 +64,19 @@ public final class StandaloneClient {
                 System.exit(1);
             }
 
+            // Create the executor threads and the suiteRunner, outputter threads and start them all.
+            List<BlockingQueue<TestExecutor.TestMethod>> testQueues = createTestQueues(numThreads);
+            List<BlockingQueue<TestExecutor.TestResult>> resultQueues = createTestResultQueues(numThreads);
+            List<TestExecutor> executors = createExecutors(testQueues, resultQueues);
+            List<Thread> executorThreads = createExecutorThreads(executors);
+            ResultOutputter resultOutputter = ResultOutputter.outputter(resultQueues);
+            Thread outputterThread = new Thread(resultOutputter, "ResultOutputter");
+            TestSuiteRunner suiteRunner = TestSuiteRunner.withOutgoingQueue(testQueues);
+            Thread suiteRunnerThread = new Thread(suiteRunner, "TestSuiteRunner");
+            startExecutorThreads(executorThreads);
+            outputterThread.start();
+            suiteRunnerThread.start();
+
             // Grab all of the dependencies given to us and inject them into a new ClassLoader which we will use to load the test classes.
             int numDependencies = args.length - 2 - numTestClasses;
             LOGGER.log("Number of given dependencies: " + numDependencies);
@@ -74,68 +86,26 @@ public final class StandaloneClient {
             for (int i = 1; i < 1 + numDependencies; i++) {
                 dependencyUrls[i] = new File(args[2 + numDependencies + i - 1]).toURI().toURL();
             }
-
             URLClassLoader classLoader = new URLClassLoader(dependencyUrls);
+            String[] testClassPaths = Arrays.copyOfRange(args, 2, 2 + numTestClasses);
 
-            // Grab all of the submitted test classes. We want only the binary names of these classes so we can load them.
-            String[] classes = new String[numTestClasses];
-            for (int i = 2; i < 2 + numTestClasses; i++) {
-                String classPathWithBaseDirStripped = args[i].substring(testsBaseDir.length());
-                String classNameWithSuffixStripped = classPathWithBaseDirStripped.substring(0, classPathWithBaseDirStripped.length() - ".class".length());
-                String classNameBinaryformat = classNameWithSuffixStripped.replaceAll("/", ".");
-
-                LOGGER.log("Binary name of submitted test class: " + classNameBinaryformat);
-                classes[i - 2] = classNameBinaryformat;
+            LOGGER.log("Loading test suite...");
+            TestSuiteRunner.TestSuite testSuite = new TestSuiteRunner.TestSuite(testsBaseDir, testClassPaths, classLoader);
+            if (!suiteRunner.loadSuite(testSuite, 30, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Failed to load suite!");
             }
+            LOGGER.log("Test suite loaded.");
 
-            // Load all of the submitted test classes.
-            Map<Class<?>, Integer> testsCount = new HashMap<>();
-            Class<?>[] testClasses = new Class[classes.length];
-            for (int i = 0; i < classes.length; i++) {
-                testClasses[i] = classLoader.loadClass(classes[i]);
-                testsCount.put(testClasses[i], 0);
-            }
-
-            // Split out each of the test methods declared in the given test classes.
-            List<TestExecutor.TestMethod> testMethods = new ArrayList<>();
-            for (Class<?> testClass : testClasses) {
-                for (Method method : testClass.getDeclaredMethods()) {
-                    if (method.getAnnotation(org.junit.Test.class) != null) {
-                        testMethods.add(new TestExecutor.TestMethod(testClass, method));
-                        int currCount = testsCount.get(testClass);
-                        testsCount.put(testClass, currCount + 1);
-                    }
-                }
-            }
-            logTestMethods(testMethods);
-
-            // Create the executor threads and the outputter thread and start them all.
-            List<BlockingQueue<TestExecutor.TestResult>> resultQueues = createTestResultQueues(numThreads);
-            List<TestExecutor> executors = createExecutors(resultQueues);
-            List<Thread> executorThreads = createExecutorThreads(executors);
-            ResultOutputter resultOutputter = ResultOutputter.outputter(resultQueues, testsCount);
-            Thread outputterThread = new Thread(resultOutputter, "ResultOutputter");
-            startExecutorThreads(executorThreads);
-            outputterThread.start();
-
-            // Execute each of the declared test methods.
-            int index = 0;
-            while (index < testMethods.size()) {
-                for (TestExecutor executor : executors) {
-                    if (executor.loadTest(testMethods.get(index), 30, TimeUnit.SECONDS)) {
-                        index++;
-                    }
-                    if (index >= testMethods.size()) {
-                        break;
-                    }
-                }
-            }
-
-            LOGGER.log("Finished submitting all tests to executors.");
-
-            // Wait until the outputter finishes and then it is safe to shut down the executors.
+            // Wait until the outputter finishes and then it is safe to shut down all the other threads.
+            LOGGER.log("Shutting down...");
             outputterThread.join();
+            LOGGER.log("Outputter thread shut down. Shutting down executors...");
             shutdownExecutors(executorThreads, executors);
+            LOGGER.log("All executor threads shut down. Shutting down suite runner...");
+            suiteRunner.shutdown();
+            suiteRunnerThread.interrupt();
+            suiteRunnerThread.join();
+            LOGGER.log("Suite runner thread shut down.");
 
         } catch (Throwable t) {
             System.err.println("Unexpected Error!");
@@ -145,18 +115,30 @@ public final class StandaloneClient {
         }
     }
 
-    private static List<BlockingQueue<TestExecutor.TestResult>> createTestResultQueues(int numQueues) {
-        List<BlockingQueue<TestExecutor.TestResult>> queues = new ArrayList<>();
+    private static List<BlockingQueue<TestExecutor.TestMethod>> createTestQueues(int numQueues) {
+        List<BlockingQueue<TestExecutor.TestMethod>> queues = new ArrayList<>();
         for (int i = 0; i < numQueues; i++) {
-            queues.add(new LinkedBlockingQueue<>());
+            queues.add(new LinkedBlockingQueue<>(SYSTEM_CAPACITY));
         }
         return queues;
     }
 
-    private static List<TestExecutor> createExecutors(List<BlockingQueue<TestExecutor.TestResult>> resultsQueues) {
+    private static List<BlockingQueue<TestExecutor.TestResult>> createTestResultQueues(int numQueues) {
+        List<BlockingQueue<TestExecutor.TestResult>> queues = new ArrayList<>();
+        for (int i = 0; i < numQueues; i++) {
+            queues.add(new LinkedBlockingQueue<>(SYSTEM_CAPACITY));
+        }
+        return queues;
+    }
+
+    private static List<TestExecutor> createExecutors(List<BlockingQueue<TestExecutor.TestMethod>> testsQueues, List<BlockingQueue<TestExecutor.TestResult>> resultsQueues) {
+        if (testsQueues.size() != resultsQueues.size()) {
+            throw new IllegalArgumentException("must be same number of tests and results queues but found " + testsQueues.size() + " and " + resultsQueues.size());
+        }
+
         List<TestExecutor> executors = new ArrayList<>();
-        for (BlockingQueue<TestExecutor.TestResult> resultsQueue : resultsQueues) {
-            executors.add(TestExecutor.withCapacity(EXECUTOR_THREAD_CAPACITY, resultsQueue));
+        for (int i = 0; i < testsQueues.size(); i++) {
+            executors.add(TestExecutor.withQueues(testsQueues.get(i), resultsQueues.get(i)));
         }
         return executors;
     }
@@ -183,6 +165,7 @@ public final class StandaloneClient {
             executor.shutdown();
         }
         for (Thread executor : executorThreads) {
+            executor.interrupt();
             executor.join();
         }
     }
@@ -193,12 +176,6 @@ public final class StandaloneClient {
             LOGGER.log(a);
         }
         LOGGER.log("ARGS ------------------------------------------------\n");
-    }
-
-    private static void logTestMethods(Collection<TestExecutor.TestMethod> testMethods) {
-        for (TestExecutor.TestMethod testMethod : testMethods) {
-            LOGGER.log("Declared test: " + testMethod);
-        }
     }
 
     private static String usage() {
