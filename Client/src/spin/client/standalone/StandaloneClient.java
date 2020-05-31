@@ -1,5 +1,13 @@
 package spin.client.standalone;
 
+import spin.client.standalone.execution.TestExecutor;
+import spin.client.standalone.execution.TestInfo;
+import spin.client.standalone.execution.TestResult;
+import spin.client.standalone.output.ResultOutputter;
+import spin.client.standalone.runner.TestSuite;
+import spin.client.standalone.runner.TestSuiteRunner;
+import spin.client.standalone.util.Logger;
+
 import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -8,6 +16,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * A single-use client that runs a test suite and then exits.
+ */
 public final class StandaloneClient {
     private static final Logger LOGGER = Logger.forClass(StandaloneClient.class);
     private static final int SYSTEM_CAPACITY = 100;
@@ -65,8 +76,8 @@ public final class StandaloneClient {
             }
 
             // Create the executor threads and the suiteRunner, outputter threads and start them all.
-            List<BlockingQueue<TestExecutor.TestMethod>> testQueues = createTestQueues(numThreads);
-            List<BlockingQueue<TestExecutor.TestResult>> resultQueues = createTestResultQueues(numThreads);
+            List<BlockingQueue<TestInfo>> testQueues = createTestQueues(numThreads);
+            List<BlockingQueue<TestResult>> resultQueues = createTestResultQueues(numThreads);
             List<TestExecutor> executors = createExecutors(testQueues, resultQueues);
             List<Thread> executorThreads = createExecutorThreads(executors);
             ResultOutputter resultOutputter = ResultOutputter.outputter(resultQueues);
@@ -90,7 +101,7 @@ public final class StandaloneClient {
             String[] testClassPaths = Arrays.copyOfRange(args, 2, 2 + numTestClasses);
 
             LOGGER.log("Loading test suite...");
-            TestSuiteRunner.TestSuite testSuite = new TestSuiteRunner.TestSuite(testsBaseDir, testClassPaths, classLoader);
+            TestSuite testSuite = new TestSuite(testsBaseDir, testClassPaths, classLoader);
             if (!suiteRunner.loadSuite(testSuite, 30, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("Failed to load suite!");
             }
@@ -115,23 +126,23 @@ public final class StandaloneClient {
         }
     }
 
-    private static List<BlockingQueue<TestExecutor.TestMethod>> createTestQueues(int numQueues) {
-        List<BlockingQueue<TestExecutor.TestMethod>> queues = new ArrayList<>();
+    private static List<BlockingQueue<TestInfo>> createTestQueues(int numQueues) {
+        List<BlockingQueue<TestInfo>> queues = new ArrayList<>();
         for (int i = 0; i < numQueues; i++) {
             queues.add(new LinkedBlockingQueue<>(SYSTEM_CAPACITY));
         }
         return queues;
     }
 
-    private static List<BlockingQueue<TestExecutor.TestResult>> createTestResultQueues(int numQueues) {
-        List<BlockingQueue<TestExecutor.TestResult>> queues = new ArrayList<>();
+    private static List<BlockingQueue<TestResult>> createTestResultQueues(int numQueues) {
+        List<BlockingQueue<TestResult>> queues = new ArrayList<>();
         for (int i = 0; i < numQueues; i++) {
             queues.add(new LinkedBlockingQueue<>(SYSTEM_CAPACITY));
         }
         return queues;
     }
 
-    private static List<TestExecutor> createExecutors(List<BlockingQueue<TestExecutor.TestMethod>> testsQueues, List<BlockingQueue<TestExecutor.TestResult>> resultsQueues) {
+    private static List<TestExecutor> createExecutors(List<BlockingQueue<TestInfo>> testsQueues, List<BlockingQueue<TestResult>> resultsQueues) {
         if (testsQueues.size() != resultsQueues.size()) {
             throw new IllegalArgumentException("must be same number of tests and results queues but found " + testsQueues.size() + " and " + resultsQueues.size());
         }

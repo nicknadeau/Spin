@@ -1,4 +1,7 @@
-package spin.client.standalone;
+package spin.client.standalone.output;
+
+import spin.client.standalone.execution.TestResult;
+import spin.client.standalone.util.Logger;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -11,10 +14,10 @@ import java.util.concurrent.TimeUnit;
  */
 public final class ResultOutputter implements Runnable {
     private static final Logger LOGGER = Logger.forClass(ResultOutputter.class);
-    private final List<BlockingQueue<TestExecutor.TestResult>> incomingResultQueues;
+    private final List<BlockingQueue<TestResult>> incomingResultQueues;
     private volatile boolean isAlive = true;
 
-    private ResultOutputter(List<BlockingQueue<TestExecutor.TestResult>> incomingResultQueues) {
+    private ResultOutputter(List<BlockingQueue<TestResult>> incomingResultQueues) {
         if (incomingResultQueues == null) {
             throw new NullPointerException("incomingResultQueues must be non-null.");
         }
@@ -28,7 +31,7 @@ public final class ResultOutputter implements Runnable {
      * @param incomingResultQueues The queues that test results may be coming in on asynchronously.
      * @return the new outputter.
      */
-    public static ResultOutputter outputter(List<BlockingQueue<TestExecutor.TestResult>> incomingResultQueues) {
+    public static ResultOutputter outputter(List<BlockingQueue<TestResult>> incomingResultQueues) {
         return new ResultOutputter(incomingResultQueues);
     }
 
@@ -38,14 +41,14 @@ public final class ResultOutputter implements Runnable {
             System.out.println("\n===============================================================");
 
             while (this.isAlive) {
-                for (BlockingQueue<TestExecutor.TestResult> incomingResultQueue : this.incomingResultQueues) {
+                for (BlockingQueue<TestResult> incomingResultQueue : this.incomingResultQueues) {
                     if (!this.isAlive) {
                         break;
                     }
 
                     LOGGER.log("Checking for new results...");
 
-                    TestExecutor.TestResult result = null;
+                    TestResult result = null;
                     try {
                         result = incomingResultQueue.poll(3, TimeUnit.SECONDS);
                     } catch (InterruptedException e) {
@@ -91,5 +94,10 @@ public final class ResultOutputter implements Runnable {
         return BigDecimal.valueOf(nanos).setScale(4, RoundingMode.HALF_DOWN)
                 .divide(BigDecimal.valueOf(1_000_000_000L), RoundingMode.HALF_DOWN).setScale(4, RoundingMode.HALF_DOWN)
                 .toPlainString();
+    }
+
+    @Override
+    public String toString() {
+        return this.getClass().getName() + (this.isAlive ? " { [running] }" : " { [shutdown] }");
     }
 }
