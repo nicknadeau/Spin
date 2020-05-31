@@ -1,0 +1,34 @@
+version: 2
+jobs:
+   build:
+     docker:
+       - image: circleci/openjdk:9.0.4-jdk
+     steps:
+       - checkout
+       - run:
+           command: |
+             ant build-standalone
+   demo:
+     docker:
+       - image: circleci/openjdk:9.0.4-jdk
+     steps:
+       - checkout
+       - run:
+           command: |
+             ./pack.sh && cd pack && ./spin build/test build/src lib/*
+workflows:
+  version: 2
+  build_and_demo:
+    jobs:
+    - build:
+       filters:
+         branches:
+           only: 
+             - master
+             - dev
+    - demo:
+       filters:
+         branches:
+           only:
+             - master
+             - dev
