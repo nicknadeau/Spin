@@ -16,8 +16,10 @@ An example module is provided that simulates a project with some tests to be run
 ```shell
 ./pack.sh
 cd pack
-./spin build/test build/src lib/*
+./spin 4 build/test build/src lib/*
 ```
+
+The above command will run Spin using 4 threads. It will run all of the tests in the given test directory 'build/test' and it supplies all of the dependency .class and .jar files required to run these tests, located in the 'build/src' and 'lib' directories.
 
 To clean up when finished run:
 

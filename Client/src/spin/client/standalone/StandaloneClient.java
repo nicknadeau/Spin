@@ -6,10 +6,12 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.text.DecimalFormat;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 public final class StandaloneClient {
     private static final Logger LOGGER = Logger.forClass(StandaloneClient.class);
     private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.####");
+    private static final int EXECUTOR_THREAD_CAPACITY = 100;
 
     /**
      * We expect to be given N test classes and M dependencies.
@@ -41,6 +43,12 @@ public final class StandaloneClient {
             if (!Boolean.parseBoolean(System.getProperty("enable_logger"))) {
                 LOGGER.disable();
             }
+
+            int numThreads = Integer.parseInt(System.getProperty("num_threads"));
+
+            List<TestExecutor> executors = createExecutors(numThreads);
+            List<Thread> executorThreads = createExecutorThreads(executors);
+            startExecutorThreads(executorThreads);
 
             logArguments(args);
 
@@ -91,24 +99,109 @@ public final class StandaloneClient {
             }
 
             // Split out each of the test methods declared in the given test classes.
-            List<TestMethod> testMethods = new ArrayList<>();
+            List<TestExecutor.TestMethod> testMethods = new ArrayList<>();
             for (Class<?> testClass : testClasses) {
                 for (Method method : testClass.getDeclaredMethods()) {
                     if (method.getAnnotation(org.junit.Test.class) != null) {
-                        testMethods.add(new TestMethod(testClass, method));
+                        testMethods.add(new TestExecutor.TestMethod(testClass, method));
                     }
                 }
             }
             logTestMethods(testMethods);
 
             // Execute each of the declared test methods.
-            Map<Class<?>, TestClassStats> testClassStatsMap = executeTests(testMethods);
-            outputTestResults(testClassStatsMap);
+            int index = 0;
+            while (index < testMethods.size()) {
+                for (TestExecutor executor : executors) {
+                    if (executor.loadTest(testMethods.get(index), 30, TimeUnit.SECONDS)) {
+                        index++;
+                    }
+                    if (index >= testMethods.size()) {
+                        break;
+                    }
+                }
+            }
+
+            List<TestExecutor.TestResult> results = drainResults(executors, testMethods.size());
+            shutdownExecutors(executors);
+
+            outputTestResults(produceTestClassStatsMap(results));
 
         } catch (Throwable t) {
             System.err.println("Unexpected Error!");
             t.printStackTrace();
         }
+    }
+
+    private static List<TestExecutor> createExecutors(int num) {
+        List<TestExecutor> executors = new ArrayList<>();
+        for (int i = 0; i < num; i++) {
+            executors.add(TestExecutor.withCapacity(EXECUTOR_THREAD_CAPACITY));
+        }
+        return executors;
+    }
+
+    private static List<Thread> createExecutorThreads(List<TestExecutor> executors) {
+        List<Thread> threads = new ArrayList<>();
+
+        int index = 0;
+        for (TestExecutor executor : executors) {
+            threads.add(new Thread(executor, "TestExecutor-" + index));
+            index++;
+        }
+        return threads;
+    }
+
+    private static void startExecutorThreads(List<Thread> executors) {
+        for (Thread executor : executors) {
+            executor.start();
+        }
+    }
+
+    private static List<TestExecutor.TestResult> drainResults(List<TestExecutor> executors, int numToDrain) {
+        List<TestExecutor.TestResult> results = new ArrayList<>();
+
+        int numDrained = 0;
+        while (numDrained < numToDrain) {
+            for (TestExecutor executor : executors) {
+                TestExecutor.TestResult result = executor.getNextResult();
+                if (result != null) {
+                    results.add(result);
+                    numDrained++;
+                }
+                if (numDrained >= numToDrain) {
+                    break;
+                }
+            }
+        }
+
+        return results;
+    }
+
+    private static void shutdownExecutors(List<TestExecutor> executors) {
+        for (TestExecutor executor : executors) {
+            executor.shutdown();
+        }
+    }
+
+    private static Map<Class<?>, TestClassStats> produceTestClassStatsMap(List<TestExecutor.TestResult> results) {
+        Map<Class<?>, TestClassStats> map = new HashMap<>();
+
+        for (TestExecutor.TestResult result : results) {
+            if (!map.containsKey(result.testClass)) {
+                map.put(result.testClass, new TestClassStats());
+            }
+
+            TestClassStats testClassStats = map.get(result.testClass);
+            testClassStats.testTimes.put(result.testMethod, result.durationNanos);
+            if (result.successful) {
+                testClassStats.successfulTestMethods.add(result.testMethod);
+            } else {
+                testClassStats.failedTestMethods.add(result.testMethod);
+            }
+        }
+
+        return map;
     }
 
     private static void logArguments(String[] args) {
@@ -119,8 +212,8 @@ public final class StandaloneClient {
         LOGGER.log("ARGS ------------------------------------------------\n");
     }
 
-    private static void logTestMethods(Collection<TestMethod> testMethods) {
-        for (TestMethod testMethod : testMethods) {
+    private static void logTestMethods(Collection<TestExecutor.TestMethod> testMethods) {
+        for (TestExecutor.TestMethod testMethod : testMethods) {
             LOGGER.log("Declared test: " + testMethod);
         }
     }
@@ -132,36 +225,6 @@ public final class StandaloneClient {
                 + "\n\tnum tests: the total number of test classes to be run."
                 + "\n\ttest class: a canonical path to the .class test class file to be run."
                 + "\n\tdependency: a canonical path to the .jar dependency or a directory of .class file dependencies.";
-    }
-
-    private static Map<Class<?>, TestClassStats> executeTests(List<TestMethod> testMethods) {
-        Map<Class<?>, TestClassStats> testClassStatsMap = new HashMap<>();
-
-        for (TestMethod testMethod : testMethods) {
-            if (!testClassStatsMap.containsKey(testMethod.testClass)) {
-                testClassStatsMap.put(testMethod.testClass, new TestClassStats());
-            }
-
-            long startTime = System.nanoTime();
-            try {
-                Object instance = testMethod.testClass.getConstructor().newInstance();
-                testMethod.method.invoke(instance);
-                long endTime = System.nanoTime();
-
-                TestClassStats testClassStats = testClassStatsMap.get(testMethod.testClass);
-                testClassStats.successfulTestMethods.add(testMethod.method);
-                testClassStats.testTimes.put(testMethod.method, endTime - startTime);
-
-            } catch (Exception e) {
-                long endTime = System.nanoTime();
-
-                TestClassStats testClassStats = testClassStatsMap.get(testMethod.testClass);
-                testClassStats.failedTestMethods.add(testMethod.method);
-                testClassStats.testTimes.put(testMethod.method, endTime - startTime);
-            }
-        }
-
-        return testClassStatsMap;
     }
 
     private static void outputTestResults(Map<Class<?>, TestClassStats> testClassStatsMap) {
@@ -212,21 +275,6 @@ public final class StandaloneClient {
                 sum += time;
             }
             return sum;
-        }
-    }
-
-    private static class TestMethod {
-        private final Class<?> testClass;
-        private final Method method;
-
-        private TestMethod(Class<?> testClass, Method method) {
-            this.testClass = testClass;
-            this.method = method;
-        }
-
-        @Override
-        public String toString() {
-            return "TestMethod { class: " + this.testClass.getName() + ", method: " + this.method.getName() + " }";
         }
     }
 }
