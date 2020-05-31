@@ -38,6 +38,10 @@ public final class StandaloneClient {
                 System.exit(1);
             }
 
+            if (!Boolean.parseBoolean(System.getProperty("enable_logger"))) {
+                LOGGER.disable();
+            }
+
             logArguments(args);
 
             if (args.length < 2) {
@@ -110,7 +114,7 @@ public final class StandaloneClient {
     private static void logArguments(String[] args) {
         LOGGER.log("ARGS ------------------------------------------------");
         for (String a : args) {
-            System.out.println(a);
+            LOGGER.log(a);
         }
         LOGGER.log("ARGS ------------------------------------------------\n");
     }

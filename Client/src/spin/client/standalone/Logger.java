@@ -2,6 +2,7 @@ package spin.client.standalone;
 
 public final class Logger {
     private final String className;
+    private boolean enabled = true;
 
     private Logger(String className) {
         if (className == null) {
@@ -14,7 +15,17 @@ public final class Logger {
         return new Logger(logClass.getName());
     }
 
+    public void disable() {
+        this.enabled = false;
+    }
+
+    public void enable() {
+        this.enabled =true;
+    }
+
     public void log(String message) {
-        System.out.println(this.className + ": " + message);
+        if (this.enabled) {
+            System.out.println(this.className + ": " + message);
+        }
     }
 }
