@@ -1,6 +1,7 @@
 package spin.client.standalone.runner;
 
 import spin.client.standalone.execution.TestInfo;
+import spin.client.standalone.lifecycle.ShutdownMonitor;
 import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
 
@@ -16,14 +17,23 @@ import java.util.concurrent.TimeUnit;
 public final class TestSuiteRunner implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestSuiteRunner.class);
     private final Object monitor = new Object();
+    private final ShutdownMonitor shutdownMonitor;
     private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
-    private TestSuite suite = null;
+    private final CloseableBlockingQueue<TestSuite> incomingSuiteQueue;
     private volatile boolean isAlive = true;
 
-    private TestSuiteRunner(List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+    private TestSuiteRunner(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+        if (shutdownMonitor == null) {
+            throw new NullPointerException("shutdownMonitor must be non-null.");
+        }
+        if (incomingSuiteQueue == null) {
+            throw new NullPointerException("incomingSuiteQueue must be non-null.");
+        }
         if (outgoingTestQueues == null) {
             throw new NullPointerException("outgoingTestQueues must be non-null.");
         }
+        this.shutdownMonitor = shutdownMonitor;
+        this.incomingSuiteQueue = incomingSuiteQueue;
         this.outgoingTestQueues = outgoingTestQueues;
     }
 
@@ -31,11 +41,13 @@ public final class TestSuiteRunner implements Runnable {
      * Constructs a new suite runner that will put all of the tests it receives into the given queues. It will attempt
      * to add tests to these queues fairly so that they each receive a roughly equal load.
      *
+     * @param shutdownMonitor The shutdown monitor.
+     * @param incomingSuiteQueue The queue in which test suites are loaded into.
      * @param outgoingTestQueues The queues to load the tests into.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withOutgoingQueue(List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
-        return new TestSuiteRunner(outgoingTestQueues);
+    public static TestSuiteRunner withOutgoingQueue(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+        return new TestSuiteRunner(shutdownMonitor, incomingSuiteQueue, outgoingTestQueues);
     }
 
     @Override
@@ -46,7 +58,7 @@ public final class TestSuiteRunner implements Runnable {
 
                 try {
                     LOGGER.log("Attempting to fetch next test suite to load...");
-                    TestSuite testSuite = fetchNextSuite();
+                    TestSuite testSuite = this.incomingSuiteQueue.poll(5, TimeUnit.MINUTES);
                     if (testSuite != null) {
                         LOGGER.log("Got next test suite to load.");
 
@@ -112,57 +124,14 @@ public final class TestSuiteRunner implements Runnable {
                 } catch (ClassNotFoundException | InterruptedException e) {
                     LOGGER.log("Unexpected error.");
                     e.printStackTrace();
-                } finally {
-                    clearSuite();
                 }
-
             }
 
+        } catch (Throwable t) {
+            this.shutdownMonitor.panic(t);
         } finally {
             this.isAlive = false;
             LOGGER.log("Exiting.");
-        }
-    }
-
-    /**
-     * Attempts to load the given suite into this runner. If this runner is already occupied with a suite then this
-     * method will block until space frees and the suite could be loaded or until the runner is shutdown or the timeout
-     * elapses, whichever happens first.
-     *
-     * Returns true iff the suite was successfully loaded into the runner.
-     *
-     * @param suite The suite to load.
-     * @param timeout The timeout duration.
-     * @param unit The timeout duration units.
-     * @return whether or not the suite was loaded.
-     */
-    public boolean loadSuite(TestSuite suite, long timeout, TimeUnit unit) throws InterruptedException {
-        if (suite == null) {
-            throw new NullPointerException("suite must be non-null.");
-        }
-        if (timeout < 1) {
-            throw new IllegalArgumentException("timeout must be positive but was: " + timeout);
-        }
-        if (unit == null) {
-            throw new NullPointerException("unit must be non-null.");
-        }
-
-        long currentTime = System.currentTimeMillis();
-        long deadline = currentTime + unit.toMillis(timeout);
-
-        synchronized (this.monitor) {
-            while ((currentTime < deadline) && (this.isAlive) && (this.suite != null)) {
-                this.monitor.wait(deadline - currentTime);
-                currentTime = System.currentTimeMillis();
-            }
-
-            if ((this.isAlive) && (this.suite == null)) {
-                this.suite = suite;
-                this.monitor.notifyAll();
-                return true;
-            } else {
-                return false;
-            }
         }
     }
 
@@ -172,27 +141,6 @@ public final class TestSuiteRunner implements Runnable {
     public void shutdown() {
         this.isAlive = false;
         synchronized (this.monitor) {
-            this.monitor.notifyAll();
-        }
-    }
-
-    private TestSuite fetchNextSuite() {
-        synchronized (this.monitor) {
-            while ((this.isAlive) && (this.suite == null)) {
-                try {
-                    this.monitor.wait();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-
-            return (this.isAlive) ? this.suite : null;
-        }
-    }
-
-    private void clearSuite() {
-        synchronized (this.monitor) {
-            this.suite = null;
             this.monitor.notifyAll();
         }
     }

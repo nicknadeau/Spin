@@ -1,25 +1,40 @@
 package spin.client.standalone.output;
 
 import spin.client.standalone.execution.TestResult;
+import spin.client.standalone.lifecycle.LifecycleListener;
+import spin.client.standalone.lifecycle.ShutdownMonitor;
 import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The class that is responsible for outputting the test results to the console.
+ *
+ * This class has a finite amount of work to do and when it is complete it will notify the {@link LifecycleListener}.
  */
 public final class ResultOutputter implements Runnable {
     private static final Logger LOGGER = Logger.forClass(ResultOutputter.class);
+    private final ShutdownMonitor shutdownMonitor;
+    private final LifecycleListener lifecycleListener;
     private final List<CloseableBlockingQueue<TestResult>> incomingResultQueues;
     private volatile boolean isAlive = true;
 
-    private ResultOutputter(List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
+    private ResultOutputter(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
+        if (shutdownMonitor == null) {
+            throw new NullPointerException("shutdownMonitor must be non-null.");
+        }
+        if (lifecycleListener == null) {
+            throw new NullPointerException("lifecycleListener must be non-null.");
+        }
         if (incomingResultQueues == null) {
             throw new NullPointerException("incomingResultQueues must be non-null.");
         }
+        this.shutdownMonitor = shutdownMonitor;
+        this.lifecycleListener = lifecycleListener;
         this.incomingResultQueues = incomingResultQueues;
     }
 
@@ -27,18 +42,18 @@ public final class ResultOutputter implements Runnable {
      * Creates a new result outputter that expects to witness the specified number of tests per each class as given by
      * the mapping and which expects to find all of the test results on the list of queues given to it.
      *
+     * @param shutdownMonitor The shutdown monitor.
+     * @param lifecycleListener The lifecycle listener.
      * @param incomingResultQueues The queues that test results may be coming in on asynchronously.
      * @return the new outputter.
      */
-    public static ResultOutputter outputter(List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
-        return new ResultOutputter(incomingResultQueues);
+    public static ResultOutputter outputter(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
+        return new ResultOutputter(shutdownMonitor, lifecycleListener, incomingResultQueues);
     }
 
     @Override
     public void run() {
         try {
-            System.out.println("\n===============================================================");
-
             while (this.isAlive) {
                 for (CloseableBlockingQueue<TestResult> incomingResultQueue : this.incomingResultQueues) {
                     if (!this.isAlive) {
@@ -47,9 +62,10 @@ public final class ResultOutputter implements Runnable {
 
                     LOGGER.log("Checking for new results...");
 
-                    TestResult result = incomingResultQueue.tryPoll();
+                    TestResult result = incomingResultQueue.poll(5, TimeUnit.MINUTES);
 
                     if (result != null) {
+                        System.out.println("\n===============================================================");
                         LOGGER.log("New result obtained.");
 
                         // Report the test as successful or failed.
@@ -98,20 +114,23 @@ public final class ResultOutputter implements Runnable {
                 }
             }
 
+        } catch (Throwable t) {
+            this.shutdownMonitor.panic(t);
         } finally {
             System.out.println("===============================================================");
+            this.lifecycleListener.notifyDone();
             LOGGER.log("Exiting.");
         }
+    }
+
+    @Override
+    public String toString() {
+        return this.getClass().getName() + (this.isAlive ? " { [running] }" : " { [shutdown] }");
     }
 
     private static String nanosToSecondsString(long nanos) {
         return BigDecimal.valueOf(nanos).setScale(4, RoundingMode.HALF_DOWN)
                 .divide(BigDecimal.valueOf(1_000_000_000L), RoundingMode.HALF_DOWN).setScale(4, RoundingMode.HALF_DOWN)
                 .toPlainString();
-    }
-
-    @Override
-    public String toString() {
-        return this.getClass().getName() + (this.isAlive ? " { [running] }" : " { [shutdown] }");
     }
 }

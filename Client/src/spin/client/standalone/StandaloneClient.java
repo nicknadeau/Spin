@@ -1,12 +1,8 @@
 package spin.client.standalone;
 
-import spin.client.standalone.execution.TestExecutor;
-import spin.client.standalone.execution.TestInfo;
-import spin.client.standalone.execution.TestResult;
-import spin.client.standalone.output.ResultOutputter;
+import spin.client.standalone.lifecycle.LifecycleManager;
+import spin.client.standalone.lifecycle.ShutdownMonitor;
 import spin.client.standalone.runner.TestSuite;
-import spin.client.standalone.runner.TestSuiteRunner;
-import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
 import spin.client.standalone.util.ThreadLocalPrintStream;
 
@@ -14,14 +10,12 @@ import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 /**
  * A single-use client that runs a test suite and then exits.
  */
 public final class StandaloneClient {
     private static final Logger LOGGER = Logger.forClass(StandaloneClient.class);
-    private static final int SYSTEM_CAPACITY = 100;
 
     /**
      * We expect to be given N test classes and M dependencies.
@@ -43,6 +37,8 @@ public final class StandaloneClient {
      * args at indices [2+N+1..2+N+M]: each of the M dependencies
      */
     public static void main(String[] args) {
+        ShutdownMonitor shutdownMonitor = null;
+
         try {
             if (args == null) {
                 System.err.println("Null arguments given.");
@@ -77,18 +73,11 @@ public final class StandaloneClient {
                 System.exit(1);
             }
 
-            // Create the executor threads and the suiteRunner, outputter threads and start them all.
-            List<CloseableBlockingQueue<TestInfo>> testQueues = createTestQueues(numThreads);
-            List<CloseableBlockingQueue<TestResult>> resultQueues = createTestResultQueues(numThreads);
-            List<TestExecutor> executors = createExecutors(testQueues, resultQueues);
-            List<Thread> executorThreads = createExecutorThreads(executors);
-            ResultOutputter resultOutputter = ResultOutputter.outputter(resultQueues);
-            Thread outputterThread = new Thread(resultOutputter, "ResultOutputter");
-            TestSuiteRunner suiteRunner = TestSuiteRunner.withOutgoingQueue(testQueues);
-            Thread suiteRunnerThread = new Thread(suiteRunner, "TestSuiteRunner");
-            startExecutorThreads(executorThreads);
-            outputterThread.start();
-            suiteRunnerThread.start();
+            // Create the lifecycle manager. This class will start up all the components of the system and manage them.
+            LifecycleManager lifecycleManager = LifecycleManager.withNumExecutors(numThreads);
+            shutdownMonitor = lifecycleManager.getShutdownMonitor();
+            Thread lifecycleManagerThread = new Thread(lifecycleManager, "LifecycleManager");
+            lifecycleManagerThread.start();
 
             // Grab all of the dependencies given to us and inject them into a new ClassLoader which we will use to load the test classes.
             int numDependencies = args.length - 2 - numTestClasses;
@@ -104,25 +93,21 @@ public final class StandaloneClient {
 
             LOGGER.log("Loading test suite...");
             TestSuite testSuite = new TestSuite(testsBaseDir, testClassPaths, classLoader);
-            if (!suiteRunner.loadSuite(testSuite, 30, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("Failed to load suite!");
+            if (!lifecycleManager.getTestSuiteQueue().add(testSuite)) {
+                throw new IllegalArgumentException("failed to add test suite to queue.");
             }
             LOGGER.log("Test suite loaded.");
 
-            // Wait until the outputter finishes and then it is safe to shut down all the other threads.
-            LOGGER.log("Shutting down...");
-            outputterThread.join();
-            closeQueues(testQueues, resultQueues);
-            LOGGER.log("Outputter thread shut down. Shutting down executors...");
-            shutdownExecutors(executorThreads, executors);
-            LOGGER.log("All executor threads shut down. Shutting down suite runner...");
-            suiteRunner.shutdown();
-            suiteRunnerThread.join();
-            LOGGER.log("Suite runner thread shut down.");
+            // Done, now wait for the lifecycle manager to shutdown, signalling the program is done running.
+            lifecycleManagerThread.join();
 
         } catch (Throwable t) {
-            System.err.println("Unexpected Error!");
-            t.printStackTrace();
+            if (shutdownMonitor == null) {
+                System.err.println("Unexpected Error!");
+                t.printStackTrace();
+            } else {
+                shutdownMonitor.panic(t);
+            }
         } finally {
             LOGGER.log("Exiting.");
         }
@@ -131,69 +116,6 @@ public final class StandaloneClient {
     private static void overrideOutputStreams() {
         System.setOut(ThreadLocalPrintStream.withInitialStream(System.out));
         System.setErr(ThreadLocalPrintStream.withInitialStream(System.err));
-    }
-
-    private static List<CloseableBlockingQueue<TestInfo>> createTestQueues(int numQueues) {
-        List<CloseableBlockingQueue<TestInfo>> queues = new ArrayList<>();
-        for (int i = 0; i < numQueues; i++) {
-            queues.add(CloseableBlockingQueue.withCapacity(SYSTEM_CAPACITY));
-        }
-        return queues;
-    }
-
-    private static List<CloseableBlockingQueue<TestResult>> createTestResultQueues(int numQueues) {
-        List<CloseableBlockingQueue<TestResult>> queues = new ArrayList<>();
-        for (int i = 0; i < numQueues; i++) {
-            queues.add(CloseableBlockingQueue.withCapacity(SYSTEM_CAPACITY));
-        }
-        return queues;
-    }
-
-    private static List<TestExecutor> createExecutors(List<CloseableBlockingQueue<TestInfo>> testsQueues, List<CloseableBlockingQueue<TestResult>> resultsQueues) {
-        if (testsQueues.size() != resultsQueues.size()) {
-            throw new IllegalArgumentException("must be same number of tests and results queues but found " + testsQueues.size() + " and " + resultsQueues.size());
-        }
-
-        List<TestExecutor> executors = new ArrayList<>();
-        for (int i = 0; i < testsQueues.size(); i++) {
-            executors.add(TestExecutor.withQueues(testsQueues.get(i), resultsQueues.get(i)));
-        }
-        return executors;
-    }
-
-    private static List<Thread> createExecutorThreads(List<TestExecutor> executors) {
-        List<Thread> threads = new ArrayList<>();
-
-        int index = 0;
-        for (TestExecutor executor : executors) {
-            threads.add(new Thread(executor, "TestExecutor-" + index));
-            index++;
-        }
-        return threads;
-    }
-
-    private static void startExecutorThreads(List<Thread> executors) {
-        for (Thread executor : executors) {
-            executor.start();
-        }
-    }
-
-    private static void closeQueues(List<CloseableBlockingQueue<TestInfo>> testQueues, List<CloseableBlockingQueue<TestResult>> resultQueues) {
-        for (CloseableBlockingQueue<TestResult> resultQueue : resultQueues) {
-            resultQueue.close();
-        }
-        for (CloseableBlockingQueue<TestInfo> testQueue : testQueues) {
-            testQueue.close();
-        }
-    }
-
-    private static void shutdownExecutors(List<Thread> executorThreads, List<TestExecutor> executors) throws InterruptedException {
-        for (TestExecutor executor : executors) {
-            executor.shutdown();
-        }
-        for (Thread executor : executorThreads) {
-            executor.join();
-        }
     }
 
     private static void logArguments(String[] args) {

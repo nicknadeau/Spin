@@ -1,5 +1,6 @@
 package spin.client.standalone.execution;
 
+import spin.client.standalone.lifecycle.ShutdownMonitor;
 import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
 import spin.client.standalone.util.ThreadLocalPrintStream;
@@ -19,17 +20,22 @@ import java.util.concurrent.TimeUnit;
 public final class TestExecutor implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestExecutor.class);
     private final Object monitor = new Object();
+    private final ShutdownMonitor shutdownMonitor;
     private final CloseableBlockingQueue<TestInfo> tests;
     private final CloseableBlockingQueue<TestResult> results;
     private volatile boolean isAlive = true;
 
-    private TestExecutor(CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results) {
+    private TestExecutor(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results) {
+        if (shutdownMonitor == null) {
+            throw new NullPointerException("shutdownMonitor must be non-null.");
+        }
         if (tests == null) {
             throw new NullPointerException("tests must be non-null.");
         }
         if (results == null) {
             throw new NullPointerException("results must be non-null.");
         }
+        this.shutdownMonitor = shutdownMonitor;
         this.tests = tests;
         this.results = results;
     }
@@ -40,12 +46,13 @@ public final class TestExecutor implements Runnable {
      * The executor will wait on new tests to arrive on the designed test queue it is given.
      * The executor will place each new result when it is finished running a test into the given queue.
      *
+     * @param shutdownMonitor The shutdown monitor.
      * @param tests The queue in which all incoming tests to be executed by this executor are submitted.
      * @param results The queue that all results are placed in when done by this executor.
      * @return the new executor.
      */
-    public static TestExecutor withQueues(CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results) {
-        return new TestExecutor(tests, results);
+    public static TestExecutor withQueues(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results) {
+        return new TestExecutor(shutdownMonitor, tests, results);
     }
 
     @Override
@@ -102,6 +109,8 @@ public final class TestExecutor implements Runnable {
                     LOGGER.log("[" + Thread.currentThread().getName() + "] Completed running test " + testInfo.method.getName() + " in class " + testInfo.testClass.getName());
                 }
             }
+        } catch (Throwable t) {
+            this.shutdownMonitor.panic(t);
         } finally {
             this.isAlive = false;
             LOGGER.log("[" + Thread.currentThread().getName() + "] Exiting.");
