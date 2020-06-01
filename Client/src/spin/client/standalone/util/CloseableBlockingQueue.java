@@ -79,19 +79,25 @@ public final class CloseableBlockingQueue<E> {
     }
 
     /**
-     * Attempts to add the element to the queue without blocking. If the queue is full or closed this method returns
-     * immediately and does not add the element, returning false. Otherwise the element is added and true is returned.
+     * Attempts to add the element to the queue. If the queue is full then this method blocks until space it available
+     * and it can be added or until the queue is closed, whichever happens first.
+     *
+     * Returns true iff the element was successfully added to the queue.
      *
      * @param element The element to add.
      * @return whether or not the element was added.
      */
-    public boolean tryAdd(E element) {
+    public boolean add(E element) throws InterruptedException {
         if (element == null) {
             throw new NullPointerException("element must be non-null.");
         }
 
         synchronized (this.monitor) {
-            if ((!this.isClosed) && (this.queue.size() < this.capacity)) {
+            while ((!this.isClosed) && (this.queue.size() == this.capacity)) {
+                this.monitor.wait();
+            }
+
+            if (this.queue.size() < this.capacity) {
                 this.queue.add(element);
                 this.monitor.notifyAll();
                 return true;

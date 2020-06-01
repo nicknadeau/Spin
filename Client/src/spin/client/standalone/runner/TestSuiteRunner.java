@@ -1,11 +1,11 @@
 package spin.client.standalone.runner;
 
 import spin.client.standalone.execution.TestInfo;
+import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
 
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -16,11 +16,11 @@ import java.util.concurrent.TimeUnit;
 public final class TestSuiteRunner implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestSuiteRunner.class);
     private final Object monitor = new Object();
-    private final List<BlockingQueue<TestInfo>> outgoingTestQueues;
+    private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
     private TestSuite suite = null;
     private volatile boolean isAlive = true;
 
-    private TestSuiteRunner(List<BlockingQueue<TestInfo>> outgoingTestQueues) {
+    private TestSuiteRunner(List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
         if (outgoingTestQueues == null) {
             throw new NullPointerException("outgoingTestQueues must be non-null.");
         }
@@ -34,7 +34,7 @@ public final class TestSuiteRunner implements Runnable {
      * @param outgoingTestQueues The queues to load the tests into.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withOutgoingQueue(List<BlockingQueue<TestInfo>> outgoingTestQueues) {
+    public static TestSuiteRunner withOutgoingQueue(List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
         return new TestSuiteRunner(outgoingTestQueues);
     }
 
@@ -45,8 +45,10 @@ public final class TestSuiteRunner implements Runnable {
             while (this.isAlive) {
 
                 try {
+                    LOGGER.log("Attempting to fetch next test suite to load...");
                     TestSuite testSuite = fetchNextSuite();
                     if (testSuite != null) {
+                        LOGGER.log("Got next test suite to load.");
 
                         // Grab all of the submitted test classes. We want only the binary names of these classes so we can load them.
                         String[] classes = new String[testSuite.testClassPaths.length];
@@ -60,6 +62,7 @@ public final class TestSuiteRunner implements Runnable {
                         }
 
                         // Load all of the submitted test classes.
+                        LOGGER.log("Loading all test classes as Class objects.");
                         Map<Class<?>, Integer> testsCount = new HashMap<>();
                         Class<?>[] testClasses = new Class[classes.length];
                         for (int i = 0; i < classes.length; i++) {
@@ -85,9 +88,20 @@ public final class TestSuiteRunner implements Runnable {
                         // Execute each of the declared test methods.
                         int index = 0;
                         while (index < testInfos.size()) {
-                            for (BlockingQueue<TestInfo> outgoingTestQueue : this.outgoingTestQueues) {
-                                outgoingTestQueue.put(testInfos.get(index));
-                                index++;
+                            if (!this.isAlive) {
+                                break;
+                            }
+
+                            for (CloseableBlockingQueue<TestInfo> outgoingTestQueue : this.outgoingTestQueues) {
+                                if (!this.isAlive) {
+                                    break;
+                                }
+
+                                LOGGER.log("Attempting to submit test #" + (index + 1) + " of " + testInfos.size());
+                                if (outgoingTestQueue.add(testInfos.get(index), 15, TimeUnit.SECONDS)) {
+                                    LOGGER.log("Submitted test #" + (index + 1));
+                                    index++;
+                                }
 
                                 if (index >= testInfos.size()) {
                                     break;
@@ -157,6 +171,9 @@ public final class TestSuiteRunner implements Runnable {
      */
     public void shutdown() {
         this.isAlive = false;
+        synchronized (this.monitor) {
+            this.monitor.notifyAll();
+        }
     }
 
     private TestSuite fetchNextSuite() {
@@ -182,7 +199,7 @@ public final class TestSuiteRunner implements Runnable {
 
     private static void logTestMethods(Collection<TestInfo> testInfos) {
         for (TestInfo testInfo : testInfos) {
-            LOGGER.log("Declared test: " + testInfo);
+            LOGGER.log("Test: " + testInfo);
         }
     }
 

@@ -1,8 +1,8 @@
 package spin.client.standalone.execution;
 
+import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
 
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -14,11 +14,11 @@ import java.util.concurrent.TimeUnit;
 public final class TestExecutor implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestExecutor.class);
     private final Object monitor = new Object();
-    private final BlockingQueue<TestInfo> tests;
-    private final BlockingQueue<TestResult> results;
+    private final CloseableBlockingQueue<TestInfo> tests;
+    private final CloseableBlockingQueue<TestResult> results;
     private volatile boolean isAlive = true;
 
-    private TestExecutor(BlockingQueue<TestInfo> tests, BlockingQueue<TestResult> results) {
+    private TestExecutor(CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results) {
         if (tests == null) {
             throw new NullPointerException("tests must be non-null.");
         }
@@ -39,7 +39,7 @@ public final class TestExecutor implements Runnable {
      * @param results The queue that all results are placed in when done by this executor.
      * @return the new executor.
      */
-    public static TestExecutor withQueues(BlockingQueue<TestInfo> tests, BlockingQueue<TestResult> results) {
+    public static TestExecutor withQueues(CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results) {
         return new TestExecutor(tests, results);
     }
 
@@ -72,7 +72,13 @@ public final class TestExecutor implements Runnable {
                     }
 
                     synchronized (this.monitor) {
-                        this.results.add(result);
+                        try {
+                            if (!this.results.add(result)) {
+                                throw new IllegalStateException("unable to submit result: queue is closed.");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
                     }
                     LOGGER.log("[" + Thread.currentThread().getName() + "] Completed running test " + testInfo.method.getName() + " in class " + testInfo.testClass.getName());
                 }

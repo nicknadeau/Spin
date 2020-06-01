@@ -4,8 +4,9 @@ package spin.client.standalone.util;
  * A simple logging utility that can be either enabled or disabled globally.
  */
 public final class Logger {
-    private static boolean enabled = true;
+    private static boolean globalEnabled = true;
     private final String className;
+    private boolean enabled = true;
 
     private Logger(String className) {
         if (className == null) {
@@ -27,15 +28,29 @@ public final class Logger {
     /**
      * Globally disables all loggers.
      */
-    public static void disable() {
-        enabled = false;
+    public static void globalDisable() {
+        globalEnabled = false;
     }
 
     /**
      * Globally enables all loggers.
      */
-    public static void enable() {
-        enabled =true;
+    public static void globalEnable() {
+        globalEnabled = true;
+    }
+
+    /**
+     * Globally disables all loggers.
+     */
+    public void disable() {
+        this.enabled = false;
+    }
+
+    /**
+     * Globally enables all loggers.
+     */
+    public void enable() {
+        this.enabled = true;
     }
 
     /**
@@ -44,13 +59,13 @@ public final class Logger {
      * @param message The message to log.
      */
     public void log(String message) {
-        if (enabled) {
+        if (globalEnabled && this.enabled) {
             System.out.println(this.className + ": " + message);
         }
     }
 
     @Override
     public String toString() {
-        return this.getClass().getName() + " { class: " + this.className + ", enabled: " + enabled + " }";
+        return this.getClass().getName() + " { class: " + this.className + ", enabled (global): " + globalEnabled + ", enabled (local): " + this.enabled + " }";
     }
 }

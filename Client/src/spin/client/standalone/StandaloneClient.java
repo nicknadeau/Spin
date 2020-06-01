@@ -6,14 +6,13 @@ import spin.client.standalone.execution.TestResult;
 import spin.client.standalone.output.ResultOutputter;
 import spin.client.standalone.runner.TestSuite;
 import spin.client.standalone.runner.TestSuiteRunner;
+import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
 
 import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -51,7 +50,7 @@ public final class StandaloneClient {
             }
 
             if (!Boolean.parseBoolean(System.getProperty("enable_logger"))) {
-                Logger.disable();
+                Logger.globalDisable();
             }
 
             int numThreads = Integer.parseInt(System.getProperty("num_threads"));
@@ -76,8 +75,8 @@ public final class StandaloneClient {
             }
 
             // Create the executor threads and the suiteRunner, outputter threads and start them all.
-            List<BlockingQueue<TestInfo>> testQueues = createTestQueues(numThreads);
-            List<BlockingQueue<TestResult>> resultQueues = createTestResultQueues(numThreads);
+            List<CloseableBlockingQueue<TestInfo>> testQueues = createTestQueues(numThreads);
+            List<CloseableBlockingQueue<TestResult>> resultQueues = createTestResultQueues(numThreads);
             List<TestExecutor> executors = createExecutors(testQueues, resultQueues);
             List<Thread> executorThreads = createExecutorThreads(executors);
             ResultOutputter resultOutputter = ResultOutputter.outputter(resultQueues);
@@ -110,11 +109,11 @@ public final class StandaloneClient {
             // Wait until the outputter finishes and then it is safe to shut down all the other threads.
             LOGGER.log("Shutting down...");
             outputterThread.join();
+            closeQueues(testQueues, resultQueues);
             LOGGER.log("Outputter thread shut down. Shutting down executors...");
             shutdownExecutors(executorThreads, executors);
             LOGGER.log("All executor threads shut down. Shutting down suite runner...");
             suiteRunner.shutdown();
-            suiteRunnerThread.interrupt();
             suiteRunnerThread.join();
             LOGGER.log("Suite runner thread shut down.");
 
@@ -126,23 +125,23 @@ public final class StandaloneClient {
         }
     }
 
-    private static List<BlockingQueue<TestInfo>> createTestQueues(int numQueues) {
-        List<BlockingQueue<TestInfo>> queues = new ArrayList<>();
+    private static List<CloseableBlockingQueue<TestInfo>> createTestQueues(int numQueues) {
+        List<CloseableBlockingQueue<TestInfo>> queues = new ArrayList<>();
         for (int i = 0; i < numQueues; i++) {
-            queues.add(new LinkedBlockingQueue<>(SYSTEM_CAPACITY));
+            queues.add(CloseableBlockingQueue.withCapacity(SYSTEM_CAPACITY));
         }
         return queues;
     }
 
-    private static List<BlockingQueue<TestResult>> createTestResultQueues(int numQueues) {
-        List<BlockingQueue<TestResult>> queues = new ArrayList<>();
+    private static List<CloseableBlockingQueue<TestResult>> createTestResultQueues(int numQueues) {
+        List<CloseableBlockingQueue<TestResult>> queues = new ArrayList<>();
         for (int i = 0; i < numQueues; i++) {
-            queues.add(new LinkedBlockingQueue<>(SYSTEM_CAPACITY));
+            queues.add(CloseableBlockingQueue.withCapacity(SYSTEM_CAPACITY));
         }
         return queues;
     }
 
-    private static List<TestExecutor> createExecutors(List<BlockingQueue<TestInfo>> testsQueues, List<BlockingQueue<TestResult>> resultsQueues) {
+    private static List<TestExecutor> createExecutors(List<CloseableBlockingQueue<TestInfo>> testsQueues, List<CloseableBlockingQueue<TestResult>> resultsQueues) {
         if (testsQueues.size() != resultsQueues.size()) {
             throw new IllegalArgumentException("must be same number of tests and results queues but found " + testsQueues.size() + " and " + resultsQueues.size());
         }
@@ -171,12 +170,20 @@ public final class StandaloneClient {
         }
     }
 
+    private static void closeQueues(List<CloseableBlockingQueue<TestInfo>> testQueues, List<CloseableBlockingQueue<TestResult>> resultQueues) {
+        for (CloseableBlockingQueue<TestResult> resultQueue : resultQueues) {
+            resultQueue.close();
+        }
+        for (CloseableBlockingQueue<TestInfo> testQueue : testQueues) {
+            testQueue.close();
+        }
+    }
+
     private static void shutdownExecutors(List<Thread> executorThreads, List<TestExecutor> executors) throws InterruptedException {
         for (TestExecutor executor : executors) {
             executor.shutdown();
         }
         for (Thread executor : executorThreads) {
-            executor.interrupt();
             executor.join();
         }
     }
