@@ -53,35 +53,43 @@ public final class ResultOutputter implements Runnable {
                         LOGGER.log("New result obtained.");
 
                         // Report the test as successful or failed.
+                        System.out.println("\nTEST RESULT:");
                         if (result.successful) {
-                            System.out.println("\n" + result.testClass.getName() + "::" + result.testMethod.getName() + " [successful], seconds: " + nanosToSecondsString(result.durationNanos));
+                            System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
+                            System.out.println("\tSUCCESS, duration: " + nanosToSecondsString(result.durationNanos));
                             result.testSuiteDetails.incrementNumSuccessfulTestsInClass(result.testClass, result.durationNanos);
                         } else {
-                            System.out.println("\n" + result.testClass.getName() + "::" + result.testMethod.getName() + " [failure], seconds: " + nanosToSecondsString(result.durationNanos));
+                            System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
+                            System.out.println("\tFAILED, duration: " + nanosToSecondsString(result.durationNanos));
                             result.testSuiteDetails.incrementNumFailedTestsInClass(result.testClass, result.durationNanos);
                         }
 
                         // Display the test's output.
                         if (!result.stdout.isEmpty()) {
-                            System.out.println("---- stdout ----");
+                            System.out.println("\t---- stdout ----");
                             System.out.print(result.stdout);
-                            System.out.println("----------------");
+                            System.out.println("\t----------------");
                         }
                         if (!result.stderr.isEmpty()) {
-                            System.err.println("---- stderr ----");
+                            System.err.println("\t---- stderr ----");
                             System.err.print(result.stderr);
-                            System.err.println("----------------");
+                            System.err.println("\t----------------");
                         }
 
                         // If all tests in class are complete then report the class as finished.
                         if (result.testSuiteDetails.isClassComplete(result.testClass)) {
-                            System.out.println(result.testClass.getName() + ": tests [" + result.testSuiteDetails.getNumTestsInClass(result.testClass) + "] successes: " + result.testSuiteDetails.getTotalNumSuccessfulTestsInClass(result.testClass) + ", failures: " + result.testSuiteDetails.getTotalNumFailedTestsInClass(result.testClass) + ", seconds: " + nanosToSecondsString(result.testSuiteDetails.getTotalDurationForClass(result.testClass)) + "\n");
+                            System.out.println("\nCLASS RESULT:");
+                            System.out.println("\tClass: " + result.testClass.getName());
+                            System.out.println("\tTests: " + result.testSuiteDetails.getNumTestsInClass(result.testClass) + ", Successes: " + result.testSuiteDetails.getTotalNumSuccessfulTestsInClass(result.testClass) + ", failures: " + result.testSuiteDetails.getTotalNumFailedTestsInClass(result.testClass));
+                            System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalDurationForClass(result.testClass)));
                             LOGGER.log("Witnessed all tests in class: " + result.testClass.getName());
                         }
 
                         // If all test classes are complete then report the suite as finished and exit.
                         if (result.testSuiteDetails.isSuiteComplete()) {
-                            System.out.println("Total tests [" + result.testSuiteDetails.getTotalNumTests() + "] successes: " + result.testSuiteDetails.getTotalNumSuccessfulTests() + ", failures: " + result.testSuiteDetails.getTotalNumFailedTests() + ", seconds: " + nanosToSecondsString(result.testSuiteDetails.getTotalSuiteDuration()));
+                            System.out.println("\nSUITE RESULT:");
+                            System.out.println("\tTests: " + result.testSuiteDetails.getTotalNumTests() + ", successes: " + result.testSuiteDetails.getTotalNumSuccessfulTests() + ", failures: " + result.testSuiteDetails.getTotalNumFailedTests());
+                            System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalSuiteDuration()));
                             LOGGER.log("Witnessed all tests in suite.");
                             this.isAlive = false;
                             break;
