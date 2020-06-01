@@ -18,13 +18,17 @@ public final class TestResult {
     public final Method testMethod;
     public final boolean successful;
     public final long durationNanos;
+    public final String stdout;
+    public final String stderr;
     public final TestSuiteDetails testSuiteDetails;
 
-    TestResult(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, TestSuiteDetails testSuiteDetails) {
+    TestResult(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails) {
         this.testClass = testClass;
         this.testMethod = testMethod;
         this.successful = successful;
         this.durationNanos = durationNanos;
+        this.stdout = stdout;
+        this.stderr = stderr;
         this.testSuiteDetails = testSuiteDetails;
     }
 

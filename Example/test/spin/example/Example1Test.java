@@ -11,7 +11,6 @@ public class Example1Test {
     public void test1() {
         Resource resource = ResourceSingleton.singleton();
         resource.hit();
-        System.out.println(resource.getHits());
     }
 
     @Test
@@ -23,6 +22,7 @@ public class Example1Test {
         Resource resource = ResourceSingleton.singleton();
         resource.hit();
         System.out.println(resource.getHits());
+        System.err.println("I am test2");
     }
 
     @Override

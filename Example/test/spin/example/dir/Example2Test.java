@@ -18,13 +18,13 @@ public class Example2Test {
         Resource resource = ResourceSingleton.singleton();
         resource.hit();
         System.out.println(resource.getHits());
+        System.err.println("I am test2");
     }
 
     @Test
     public void test3() {
         Resource resource = ResourceSingleton.singleton();
         resource.hit();
-        System.out.println(resource.getHits());
     }
 
     @Override

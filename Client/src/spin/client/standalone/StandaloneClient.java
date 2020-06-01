@@ -8,6 +8,7 @@ import spin.client.standalone.runner.TestSuite;
 import spin.client.standalone.runner.TestSuiteRunner;
 import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
+import spin.client.standalone.util.ThreadLocalPrintStream;
 
 import java.io.File;
 import java.net.URL;
@@ -54,6 +55,8 @@ public final class StandaloneClient {
             }
 
             int numThreads = Integer.parseInt(System.getProperty("num_threads"));
+
+            overrideOutputStreams();
 
             logArguments(args);
 
@@ -123,6 +126,11 @@ public final class StandaloneClient {
         } finally {
             LOGGER.log("Exiting.");
         }
+    }
+
+    private static void overrideOutputStreams() {
+        System.setOut(ThreadLocalPrintStream.withInitialStream(System.out));
+        System.setErr(ThreadLocalPrintStream.withInitialStream(System.err));
     }
 
     private static List<CloseableBlockingQueue<TestInfo>> createTestQueues(int numQueues) {

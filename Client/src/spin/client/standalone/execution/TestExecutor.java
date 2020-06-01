@@ -2,7 +2,12 @@ package spin.client.standalone.execution;
 
 import spin.client.standalone.util.CloseableBlockingQueue;
 import spin.client.standalone.util.Logger;
+import spin.client.standalone.util.ThreadLocalPrintStream;
 
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -59,16 +64,30 @@ public final class TestExecutor implements Runnable {
                     LOGGER.log("[" + Thread.currentThread().getName() + "] Found new test method to run.");
                     TestResult result;
 
+                    // Capture the stdout & stderr of the test method on its own private stream so we can publish it later.
+                    ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+                    ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+                    ((ThreadLocalPrintStream) System.out).setStream(new PrintStream(new BufferedOutputStream(stdout)));
+                    ((ThreadLocalPrintStream) System.err).setStream(new PrintStream(new BufferedOutputStream(stderr)));
+
                     long startTime = System.nanoTime();
                     try {
                         Object instance = testInfo.testClass.getConstructor().newInstance();
                         testInfo.method.invoke(instance);
                         long endTime = System.nanoTime();
-                        result = new TestResult(testInfo.testClass, testInfo.method, true, endTime - startTime, testInfo.testSuiteDetails);
+
+                        String capturedStdout = closeAndCaptureStream(true, stdout);
+                        String capturedStderr = closeAndCaptureStream(false, stderr);
+
+                        result = new TestResult(testInfo.testClass, testInfo.method, true, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails);
 
                     } catch (Exception e) {
                         long endTime = System.nanoTime();
-                        result = new TestResult(testInfo.testClass, testInfo.method, false, endTime - startTime, testInfo.testSuiteDetails);
+
+                        String capturedStdout = closeAndCaptureStream(true, stdout);
+                        String capturedStderr = closeAndCaptureStream(false, stderr);
+
+                        result = new TestResult(testInfo.testClass, testInfo.method, false, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails);
                     }
 
                     synchronized (this.monitor) {
@@ -102,5 +121,30 @@ public final class TestExecutor implements Runnable {
     @Override
     public String toString() {
         return this.getClass().getName() + (this.isAlive ? " { [running] }" : " { [shutdown] }");
+    }
+
+    /**
+     * If isStdout is true then the stream captures stdout otherwise it captures stderr.
+     *
+     * This method will flush the stream, return its contents as a UTF-8 String, then close the stream and restore the
+     * {@link ThreadLocalPrintStream} back to its initial value if and only if the given stream is non-null.
+     *
+     * If the given stream is null then nothing happens and this method simply returns an empty string.
+     *
+     * ASSUMPTION: the given stream is the stream that the {@link ThreadLocalPrintStream} injected into {@link System#err}/{@link System#out}
+     * is redirecting to.
+     */
+    private static String closeAndCaptureStream(boolean isStdout, ByteArrayOutputStream stream) {
+        String output = "";
+
+        if (stream != null) {
+            ThreadLocalPrintStream threadLocalOut = (ThreadLocalPrintStream) ((isStdout) ? System.out : System.err);
+            threadLocalOut.flush();
+            output = new String(stream.toByteArray(), StandardCharsets.UTF_8);
+            threadLocalOut.close();
+            threadLocalOut.restoreInitialStream();
+        }
+
+        return output;
     }
 }

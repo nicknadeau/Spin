@@ -54,11 +54,23 @@ public final class ResultOutputter implements Runnable {
 
                         // Report the test as successful or failed.
                         if (result.successful) {
-                            System.out.println(result.testClass.getName() + "::" + result.testMethod.getName() + " [successful], seconds: " + nanosToSecondsString(result.durationNanos));
+                            System.out.println("\n" + result.testClass.getName() + "::" + result.testMethod.getName() + " [successful], seconds: " + nanosToSecondsString(result.durationNanos));
                             result.testSuiteDetails.incrementNumSuccessfulTestsInClass(result.testClass, result.durationNanos);
                         } else {
-                            System.out.println(result.testClass.getName() + "::" + result.testMethod.getName() + " [failure], seconds: " + nanosToSecondsString(result.durationNanos));
+                            System.out.println("\n" + result.testClass.getName() + "::" + result.testMethod.getName() + " [failure], seconds: " + nanosToSecondsString(result.durationNanos));
                             result.testSuiteDetails.incrementNumFailedTestsInClass(result.testClass, result.durationNanos);
+                        }
+
+                        // Display the test's output.
+                        if (!result.stdout.isEmpty()) {
+                            System.out.println("---- stdout ----");
+                            System.out.print(result.stdout);
+                            System.out.println("----------------");
+                        }
+                        if (!result.stderr.isEmpty()) {
+                            System.err.println("---- stderr ----");
+                            System.err.print(result.stderr);
+                            System.err.println("----------------");
                         }
 
                         // If all tests in class are complete then report the class as finished.
