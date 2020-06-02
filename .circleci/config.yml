@@ -15,7 +15,7 @@ jobs:
        - checkout
        - run:
            command: |
-             ./pack.sh && cd pack && ./spin -v 4 build/test build/src lib/*
+             cd demo/ && ./example-singleuse.sh && cd example/ && ./spin-singleuse 4 build/test build/src lib/*
 workflows:
   version: 2
   build_and_demo:
