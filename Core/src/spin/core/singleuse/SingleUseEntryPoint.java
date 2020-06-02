@@ -1,10 +1,10 @@
-package spin.client.standalone;
+package spin.core.singleuse;
 
-import spin.client.standalone.lifecycle.LifecycleManager;
-import spin.client.standalone.lifecycle.ShutdownMonitor;
-import spin.client.standalone.runner.TestSuite;
-import spin.client.standalone.util.Logger;
-import spin.client.standalone.util.ThreadLocalPrintStream;
+import spin.core.singleuse.lifecycle.LifecycleManager;
+import spin.core.singleuse.lifecycle.ShutdownMonitor;
+import spin.core.singleuse.runner.TestSuite;
+import spin.core.singleuse.util.Logger;
+import spin.core.singleuse.util.ThreadLocalPrintStream;
 
 import java.io.File;
 import java.net.URL;
@@ -12,10 +12,10 @@ import java.net.URLClassLoader;
 import java.util.*;
 
 /**
- * A single-use client that runs a test suite and then exits.
+ * A single-use entry point to the system that runs a test suite and then exits.
  */
-public final class StandaloneClient {
-    private static final Logger LOGGER = Logger.forClass(StandaloneClient.class);
+public final class SingleUseEntryPoint {
+    private static final Logger LOGGER = Logger.forClass(SingleUseEntryPoint.class);
 
     /**
      * We expect to be given N test classes and M dependencies.
@@ -127,7 +127,7 @@ public final class StandaloneClient {
     }
 
     private static String usage() {
-        return StandaloneClient.class.getName()
+        return SingleUseEntryPoint.class.getName()
                 + " <test base> <num tests> [[test class]...] [[dependency]...]"
                 + "\n\ttest base: a canonical path to the directory containing the test classes."
                 + "\n\tnum tests: the total number of test classes to be run."

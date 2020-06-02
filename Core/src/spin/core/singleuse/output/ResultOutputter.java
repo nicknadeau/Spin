@@ -1,10 +1,10 @@
-package spin.client.standalone.output;
+package spin.core.singleuse.output;
 
-import spin.client.standalone.execution.TestResult;
-import spin.client.standalone.lifecycle.LifecycleListener;
-import spin.client.standalone.lifecycle.ShutdownMonitor;
-import spin.client.standalone.util.CloseableBlockingQueue;
-import spin.client.standalone.util.Logger;
+import spin.core.singleuse.execution.TestResult;
+import spin.core.singleuse.lifecycle.LifecycleListener;
+import spin.core.singleuse.lifecycle.ShutdownMonitor;
+import spin.core.singleuse.util.CloseableBlockingQueue;
+import spin.core.singleuse.util.Logger;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;

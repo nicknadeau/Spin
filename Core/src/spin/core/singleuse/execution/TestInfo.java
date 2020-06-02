@@ -1,6 +1,6 @@
-package spin.client.standalone.execution;
+package spin.core.singleuse.execution;
 
-import spin.client.standalone.runner.TestSuiteDetails;
+import spin.core.singleuse.runner.TestSuiteDetails;
 
 import java.lang.reflect.Method;
 

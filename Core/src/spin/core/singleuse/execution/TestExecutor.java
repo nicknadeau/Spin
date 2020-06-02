@@ -1,9 +1,9 @@
-package spin.client.standalone.execution;
+package spin.core.singleuse.execution;
 
-import spin.client.standalone.lifecycle.ShutdownMonitor;
-import spin.client.standalone.util.CloseableBlockingQueue;
-import spin.client.standalone.util.Logger;
-import spin.client.standalone.util.ThreadLocalPrintStream;
+import spin.core.singleuse.lifecycle.ShutdownMonitor;
+import spin.core.singleuse.util.CloseableBlockingQueue;
+import spin.core.singleuse.util.Logger;
+import spin.core.singleuse.util.ThreadLocalPrintStream;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;

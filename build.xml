@@ -3,12 +3,12 @@
 
     <property name="workspace" value="."/>
     <property name="pack" value="${workspace}/pack"/>
-    <property name="clientModule" value="${workspace}/Client"/>
+    <property name="coreModule" value="${workspace}/Core"/>
     <property name="exampleModule" value="${workspace}/Example"/>
 
-    <target name="build-standalone">
-        <echo message="Building Client module..."/>
-        <ant inheritAll="false" antfile="${clientModule}/build.xml" target="build-standalone">
+    <target name="build-singleuse">
+        <echo message="Building Core module..."/>
+        <ant inheritAll="false" antfile="${coreModule}/build.xml" target="build-singleuse">
             <property name="compile.debug" value="${compile.debug}"/>
         </ant>
     </target>
@@ -21,11 +21,11 @@
     </target>
 
     <target name="clean">
-        <echo message="Cleaning Client module..."/>
-        <ant inheritAll="false" antfile="${clientModule}/build.xml" target="clean">
+        <echo message="Cleaning Core module..."/>
+        <ant inheritAll="false" antfile="${coreModule}/build.xml" target="clean">
             <property name="compile.debug" value="${compile.debug}"/>
         </ant>
-        <echo message="Client module cleaned!"/>
+        <echo message="Core module cleaned!"/>
 
         <echo message="Cleaning Example module..."/>
         <ant inheritAll="false" antfile="${exampleModule}/build.xml" target="clean">

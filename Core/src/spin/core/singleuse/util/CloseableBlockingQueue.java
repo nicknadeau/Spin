@@ -1,4 +1,4 @@
-package spin.client.standalone.util;
+package spin.core.singleuse.util;
 
 import java.util.LinkedList;
 import java.util.Queue;

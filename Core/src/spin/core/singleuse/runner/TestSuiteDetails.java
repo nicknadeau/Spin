@@ -1,4 +1,4 @@
-package spin.client.standalone.runner;
+package spin.core.singleuse.runner;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package spin.client.standalone.lifecycle;
+package spin.core.singleuse.lifecycle;
 
 /**
  * A listener that listens to components in the event shutting down so that it can react accordingly.

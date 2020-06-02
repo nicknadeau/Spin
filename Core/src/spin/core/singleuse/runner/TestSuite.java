@@ -1,4 +1,4 @@
-package spin.client.standalone.runner;
+package spin.core.singleuse.runner;
 
 /**
  * A description of the test suite. The path of the base test directory which all the tests are located in, the array

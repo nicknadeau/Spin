@@ -1,13 +1,13 @@
-package spin.client.standalone.lifecycle;
+package spin.core.singleuse.lifecycle;
 
-import spin.client.standalone.execution.TestExecutor;
-import spin.client.standalone.execution.TestInfo;
-import spin.client.standalone.execution.TestResult;
-import spin.client.standalone.output.ResultOutputter;
-import spin.client.standalone.runner.TestSuite;
-import spin.client.standalone.runner.TestSuiteRunner;
-import spin.client.standalone.util.CloseableBlockingQueue;
-import spin.client.standalone.util.Logger;
+import spin.core.singleuse.execution.TestExecutor;
+import spin.core.singleuse.execution.TestInfo;
+import spin.core.singleuse.execution.TestResult;
+import spin.core.singleuse.output.ResultOutputter;
+import spin.core.singleuse.runner.TestSuite;
+import spin.core.singleuse.runner.TestSuiteRunner;
+import spin.core.singleuse.util.CloseableBlockingQueue;
+import spin.core.singleuse.util.Logger;
 
 import java.util.ArrayList;
 import java.util.List;

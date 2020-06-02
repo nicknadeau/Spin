@@ -1,8 +1,8 @@
-package spin.client.standalone.lifecycle;
+package spin.core.singleuse.lifecycle;
 
-import spin.client.standalone.runner.TestSuite;
-import spin.client.standalone.util.CloseableBlockingQueue;
-import spin.client.standalone.util.Logger;
+import spin.core.singleuse.runner.TestSuite;
+import spin.core.singleuse.util.CloseableBlockingQueue;
+import spin.core.singleuse.util.Logger;
 
 /**
  * The lifecycle manager. This class is responsible for starting up all of the internal components the system is comprised

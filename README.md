@@ -6,7 +6,7 @@ A library for running unit tests concurrently in Java.
 
 Run the following command to build the standalone client jar.
 ```shell
-ant build-standalone
+ant build-singleuse
 ```
 
 ## Running The Example

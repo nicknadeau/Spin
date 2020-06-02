@@ -7,7 +7,7 @@ jobs:
        - checkout
        - run:
            command: |
-             ant build-standalone
+             ant build-singleuse
    demo:
      docker:
        - image: circleci/openjdk:9.0.4-jdk

@@ -1,4 +1,4 @@
-package spin.client.standalone.lifecycle;
+package spin.core.singleuse.lifecycle;
 
 /**
  * A listener that listens to events in a component's life-cycle and reacts accordingly.

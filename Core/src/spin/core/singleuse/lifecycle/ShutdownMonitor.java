@@ -1,4 +1,4 @@
-package spin.client.standalone.lifecycle;
+package spin.core.singleuse.lifecycle;
 
 /**
  * A shared monitor that is used by threads being life-cycled by someone else so that they can alert of unexpected errors

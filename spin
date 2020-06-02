@@ -60,4 +60,4 @@ do
 	dependencies="$dependencies $(realpath $dependency)"
 done
 
-java "$verbose_property" "$num_threads_property" -cp "spin-standalone.jar:junit-4.12.jar" spin.client.standalone.StandaloneClient "$(realpath $test_dir)" "$num_tests" $tests $dependencies
+java "$verbose_property" "$num_threads_property" -cp "spin-singleuse.jar:junit-4.12.jar" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$num_tests" $tests $dependencies

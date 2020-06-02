@@ -1,9 +1,9 @@
-package spin.client.standalone.runner;
+package spin.core.singleuse.runner;
 
-import spin.client.standalone.execution.TestInfo;
-import spin.client.standalone.lifecycle.ShutdownMonitor;
-import spin.client.standalone.util.CloseableBlockingQueue;
-import spin.client.standalone.util.Logger;
+import spin.core.singleuse.execution.TestInfo;
+import spin.core.singleuse.lifecycle.ShutdownMonitor;
+import spin.core.singleuse.util.CloseableBlockingQueue;
+import spin.core.singleuse.util.Logger;
 
 import java.lang.reflect.Method;
 import java.util.*;
