@@ -23,9 +23,10 @@ public final class TestExecutor implements Runnable {
     private final ShutdownMonitor shutdownMonitor;
     private final CloseableBlockingQueue<TestInfo> tests;
     private final CloseableBlockingQueue<TestResult> results;
+    private final boolean writeToDb;
     private volatile boolean isAlive = true;
 
-    private TestExecutor(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results) {
+    private TestExecutor(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
         if (shutdownMonitor == null) {
             throw new NullPointerException("shutdownMonitor must be non-null.");
         }
@@ -38,6 +39,7 @@ public final class TestExecutor implements Runnable {
         this.shutdownMonitor = shutdownMonitor;
         this.tests = tests;
         this.results = results;
+        this.writeToDb = writeToDb;
     }
 
     /**
@@ -49,10 +51,11 @@ public final class TestExecutor implements Runnable {
      * @param shutdownMonitor The shutdown monitor.
      * @param tests The queue in which all incoming tests to be executed by this executor are submitted.
      * @param results The queue that all results are placed in when done by this executor.
+     * @param writeToDb Whether or not database writes are enabled for result recording.
      * @return the new executor.
      */
-    public static TestExecutor withQueues(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results) {
-        return new TestExecutor(shutdownMonitor, tests, results);
+    public static TestExecutor withQueues(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
+        return new TestExecutor(shutdownMonitor, tests, results, writeToDb);
     }
 
     @Override
@@ -86,7 +89,9 @@ public final class TestExecutor implements Runnable {
                         String capturedStdout = closeAndCaptureStream(true, stdout);
                         String capturedStderr = closeAndCaptureStream(false, stderr);
 
-                        result = new TestResult(testInfo.testClass, testInfo.method, true, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails);
+                        result = (this.writeToDb)
+                                ? TestResult.withDatabaseId(testInfo.testClass, testInfo.method, true, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails, testInfo.getTestSuiteDatabaseId(), testInfo.getTestClassDatabaseId())
+                                : TestResult.result(testInfo.testClass, testInfo.method, true, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails);
 
                     } catch (Exception e) {
                         long endTime = System.nanoTime();
@@ -94,7 +99,9 @@ public final class TestExecutor implements Runnable {
                         String capturedStdout = closeAndCaptureStream(true, stdout);
                         String capturedStderr = closeAndCaptureStream(false, stderr);
 
-                        result = new TestResult(testInfo.testClass, testInfo.method, false, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails);
+                        result = (this.writeToDb)
+                                ? TestResult.withDatabaseId(testInfo.testClass, testInfo.method, false, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails, testInfo.getTestSuiteDatabaseId(), testInfo.getTestClassDatabaseId())
+                                : TestResult.result(testInfo.testClass, testInfo.method, false, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails);
                     }
 
                     synchronized (this.monitor) {

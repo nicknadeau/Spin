@@ -10,23 +10,18 @@ import java.util.Map;
  * the state of the suite to be updated and managed through this class.
  */
 public final class TestSuiteDetails {
-    private final Map<Class<?>, Integer> numTestsPerClass;
     private final Map<Class<?>, TestClassStats> testClassStats = new HashMap<>();
+    private final Map<Class<?>, Integer> numTestsPerClass = new HashMap<>();
     private int totalNumSuccessfulTests = 0;
     private int totalNumFailedTests = 0;
     private long totalSuiteDuration = 0;
     private int numClassesFinished = 0;
 
-    /**
-     * Constructs a new suite details object that is for all of the listed classes in the given map and which expects
-     * each of those classes to have the corresponding number of tests in it.
-     *
-     * This map must be a complete listing of all the classes in the suite.
-     *
-     * @param numTestsPerClass A mapping of test counts for each class.
-     */
-    TestSuiteDetails(Map<Class<?>, Integer> numTestsPerClass) {
-        this.numTestsPerClass = numTestsPerClass;
+    public synchronized void setNumTestsPerClass(Class<?> testClass, int num) {
+        if (this.numTestsPerClass.containsKey(testClass)) {
+            throw new IllegalStateException("Cannot set testClass test count: count has already been set for this class.");
+        }
+        this.numTestsPerClass.put(testClass, num);
     }
 
     public synchronized int getNumTestsInClass(Class<?> testClass) {

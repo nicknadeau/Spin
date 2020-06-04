@@ -8,6 +8,9 @@ import spin.core.singleuse.util.Logger;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -21,9 +24,10 @@ public final class ResultOutputter implements Runnable {
     private final ShutdownMonitor shutdownMonitor;
     private final LifecycleListener lifecycleListener;
     private final List<CloseableBlockingQueue<TestResult>> incomingResultQueues;
+    private final Connection dbConnection;
     private volatile boolean isAlive = true;
 
-    private ResultOutputter(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
+    private ResultOutputter(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
         if (shutdownMonitor == null) {
             throw new NullPointerException("shutdownMonitor must be non-null.");
         }
@@ -36,6 +40,7 @@ public final class ResultOutputter implements Runnable {
         this.shutdownMonitor = shutdownMonitor;
         this.lifecycleListener = lifecycleListener;
         this.incomingResultQueues = incomingResultQueues;
+        this.dbConnection = dbConnection;
     }
 
     /**
@@ -48,7 +53,26 @@ public final class ResultOutputter implements Runnable {
      * @return the new outputter.
      */
     public static ResultOutputter outputter(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
-        return new ResultOutputter(shutdownMonitor, lifecycleListener, incomingResultQueues);
+        return new ResultOutputter(shutdownMonitor, lifecycleListener, incomingResultQueues, null);
+    }
+
+    /**
+     * Creates a new result outputter that expects to witness the specified number of tests per each class as given by
+     * the mapping and which expects to find all of the test results on the list of queues given to it.
+     *
+     * As each entry comes in it will be written to a database using the database writer.
+     *
+     * @param shutdownMonitor The shutdown monitor.
+     * @param lifecycleListener The lifecycle listener.
+     * @param incomingResultQueues The queues that test results may be coming in on asynchronously.
+     * @param dbConnection The database connection.
+     * @return the new outputter.
+     */
+    public static ResultOutputter outputterToConsoleAndDb(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
+        if (dbConnection == null) {
+            throw new NullPointerException("dbConnection must be non-null.");
+        }
+        return new ResultOutputter(shutdownMonitor, lifecycleListener, incomingResultQueues, dbConnection);
     }
 
     @Override
@@ -91,6 +115,7 @@ public final class ResultOutputter implements Runnable {
                             System.err.print(result.stderr);
                             System.err.println("\t----------------");
                         }
+                        writeTestResultToDatabase(result);
 
                         // If all tests in class are complete then report the class as finished.
                         if (result.testSuiteDetails.isClassComplete(result.testClass)) {
@@ -98,6 +123,7 @@ public final class ResultOutputter implements Runnable {
                             System.out.println("\tClass: " + result.testClass.getName());
                             System.out.println("\tTests: " + result.testSuiteDetails.getNumTestsInClass(result.testClass) + ", Successes: " + result.testSuiteDetails.getTotalNumSuccessfulTestsInClass(result.testClass) + ", failures: " + result.testSuiteDetails.getTotalNumFailedTestsInClass(result.testClass));
                             System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalDurationForClass(result.testClass)));
+                            writeClassResultToDatabase(result);
                             LOGGER.log("Witnessed all tests in class: " + result.testClass.getName());
                         }
 
@@ -106,6 +132,7 @@ public final class ResultOutputter implements Runnable {
                             System.out.println("\nSUITE RESULT:");
                             System.out.println("\tTests: " + result.testSuiteDetails.getTotalNumTests() + ", successes: " + result.testSuiteDetails.getTotalNumSuccessfulTests() + ", failures: " + result.testSuiteDetails.getTotalNumFailedTests());
                             System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalSuiteDuration()));
+                            writeSuiteResultToDatabase(result);
                             LOGGER.log("Witnessed all tests in suite.");
                             this.isAlive = false;
                             break;
@@ -118,6 +145,14 @@ public final class ResultOutputter implements Runnable {
             this.shutdownMonitor.panic(t);
         } finally {
             System.out.println("===============================================================");
+            if (this.dbConnection != null) {
+                try {
+                    this.dbConnection.close();
+                } catch (SQLException e) {
+                    LOGGER.log("Unexpected error closing database connection.");
+                    e.printStackTrace();
+                }
+            }
             this.lifecycleListener.notifyDone();
             LOGGER.log("Exiting.");
         }
@@ -126,6 +161,42 @@ public final class ResultOutputter implements Runnable {
     @Override
     public String toString() {
         return this.getClass().getName() + (this.isAlive ? " { [running] }" : " { [shutdown] }");
+    }
+
+    private void writeTestResultToDatabase(TestResult testResult) throws SQLException {
+        if (this.dbConnection != null) {
+            Statement statement = this.dbConnection.createStatement();
+            statement.execute("INSERT INTO test(name, is_success, stdout, stderr, duration, class) VALUES('"
+                    + testResult.testMethod.getName() + "', '"
+                    + (testResult.successful ? 1 : 0) + "', '"
+                    + testResult.stdout + "', '"
+                    + testResult.stderr + "', "
+                    + testResult.durationNanos + ", "
+                    + testResult.testClassDbId + ")");
+        }
+    }
+
+    private void writeClassResultToDatabase(TestResult testResult) throws SQLException {
+        if (this.dbConnection != null) {
+            Statement statement = this.dbConnection.createStatement();
+            statement.execute("UPDATE test_class SET name = '" + testResult.testClass.getName() + "',"
+                    + " num_tests = " + testResult.testSuiteDetails.getNumTestsInClass(testResult.testClass) + ", "
+                    + " num_success = " + testResult.testSuiteDetails.getTotalNumSuccessfulTestsInClass(testResult.testClass) + ", "
+                    + " num_failures = " + testResult.testSuiteDetails.getTotalNumFailedTestsInClass(testResult.testClass) + ", "
+                    + " duration = " + testResult.testSuiteDetails.getTotalDurationForClass(testResult.testClass)
+                    + " WHERE id = " + testResult.testClassDbId);
+        }
+    }
+
+    private void writeSuiteResultToDatabase(TestResult testResult) throws SQLException {
+        if (this.dbConnection != null) {
+            Statement statement = this.dbConnection.createStatement();
+            statement.execute("UPDATE test_suite SET num_tests = " + testResult.testSuiteDetails.getTotalNumTests() + ", "
+                    + " num_success = " + testResult.testSuiteDetails.getTotalNumSuccessfulTests() + ", "
+                    + " num_failures = " + testResult.testSuiteDetails.getTotalNumFailedTests() + ", "
+                    + " duration = " + testResult.testSuiteDetails.getTotalSuiteDuration()
+                    + " WHERE id = " + testResult.testSuiteDbId);
+        }
     }
 
     private static String nanosToSecondsString(long nanos) {

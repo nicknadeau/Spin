@@ -1,8 +1,9 @@
 #!/bin/bash
 
 help () {
-	echo 'USAGE: spin [-v] <num threads> <built-tests-dir> [dependencies]...'
+	echo 'USAGE: spin [-v] [-p] <num threads> <built-tests-dir> [dependencies]...'
 	echo -e "\t"'-v [OPTIONAL]: if present this flag specifies to run in verbose logging mode.'
+	echo -e "\t"'-p [OPTIONAL]: if present this flag specifies to persist the test results in a database.'
 	echo -e "\t"'num threads: the number of threads to use to run the tests with.'
 	echo -e "\t"'built-tests-dir: a directory that contains all of the built .class test files to be run.'
 	echo -e "\t"'dependencies [OPTIONAL]: zero or more .class or .jar files required to run the tests.'
@@ -15,22 +16,49 @@ then
 	exit 1
 fi
 
-# If first arg is the verbose flag we update next expected arg indices and verbose property.
+# Determine which optional flags have been given.
+num_optionals=0
 if [ "$1" == '-v' ]
 then
-	verbose=true
+	if [ "$2" == '-p' ]
+	then
+		verbose=true
+		persist=true
+		num_optionals=2
+	else
+		verbose=true
+		persist=false
+		num_optionals=1
+	fi
+elif [ "$1" == '-p' ]
+then
+	if [ "$2" == '-v' ]
+	then
+		help
+		exit 1
+	fi
+	verbose=false
+	persist=true
+	num_optionals=1
 fi
 
+# Set any system properties required by optional flags.
 if [ "$verbose" = true ]
 then
-	num_threads_index=2
-	test_dir_index=3
 	verbose_property='-Denable_logger=true'
 else
-	num_threads_index=1
-	test_dir_index=2
 	verbose_property='-Denable_logger=false'
 fi
+if [ "$persist" = true ]
+then
+	persist_property='-Dwrite_to_db=true'
+else
+	persist_property='-Dwrite_to_db=false'
+fi
+
+# Determine the indices of the non-optional arguments.
+num_threads_index=$((1+num_optionals))
+test_dir_index=$((1+num_threads_index))
 
 # Next argument must be a number, we verify that and this is the number of threads to use.
 num_threads=${!num_threads_index}
@@ -60,4 +88,11 @@ do
 	dependencies="$dependencies $(realpath $dependency)"
 done
 
-java "$verbose_property" "$num_threads_property" -cp "spin-singleuse.jar:junit-4.12.jar" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$num_tests" $tests $dependencies
+if [ "$persist" = true ]
+then
+	classpath='spin-singleuse.jar:junit-4.12.jar:postgresql-42.2.12.jar'
+else
+	classpath='spin-singleuse.jar:junit-4.12.jar'
+fi
+
+java "$verbose_property" "$persist_property" "$num_threads_property" -cp "$classpath" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$num_tests" $tests $dependencies

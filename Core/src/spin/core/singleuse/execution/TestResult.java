@@ -21,8 +21,10 @@ public final class TestResult {
     public final String stdout;
     public final String stderr;
     public final TestSuiteDetails testSuiteDetails;
+    public final int testSuiteDbId;
+    public final int testClassDbId;
 
-    TestResult(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails) {
+    private TestResult(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, int testSuiteDbId, int testClassDbId) {
         this.testClass = testClass;
         this.testMethod = testMethod;
         this.successful = successful;
@@ -30,6 +32,16 @@ public final class TestResult {
         this.stdout = stdout;
         this.stderr = stderr;
         this.testSuiteDetails = testSuiteDetails;
+        this.testSuiteDbId = testSuiteDbId;
+        this.testClassDbId = testClassDbId;
+    }
+
+    static TestResult withDatabaseId(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, int testSuiteDbId, int testClassDbId) {
+        return new TestResult(testClass, testMethod, successful, durationNanos, stdout, stderr, testSuiteDetails, testSuiteDbId, testClassDbId);
+    }
+
+    static TestResult result(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails) {
+        return new TestResult(testClass, testMethod, successful, durationNanos, stdout, stderr, testSuiteDetails, -1, -1);
     }
 
     @Override

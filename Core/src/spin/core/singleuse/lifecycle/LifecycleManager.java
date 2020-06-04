@@ -4,6 +4,8 @@ import spin.core.singleuse.runner.TestSuite;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
 
+import java.io.IOException;
+
 /**
  * The lifecycle manager. This class is responsible for starting up all of the internal components the system is comprised
  * of and ensuring they are all shutdown when the program is done running or that if there is an unexpected unrecoverable
@@ -16,13 +18,15 @@ public final class LifecycleManager implements Runnable, ShutdownListener, Lifec
     private final CloseableBlockingQueue<TestSuite> testSuiteQueue = CloseableBlockingQueue.withCapacity(1);
     private final ShutdownMonitor shutdownMonitor;
     private final int numExecutorThreads;
+    private final boolean writeToDb;
     private volatile boolean isAlive = true;
 
-    private LifecycleManager(int numThreads) {
+    private LifecycleManager(int numThreads, boolean writeToDb) {
         if (numThreads < 1) {
             throw new IllegalArgumentException("numThreads must be positive but was: " + numThreads);
         }
         this.numExecutorThreads = numThreads;
+        this.writeToDb = writeToDb;
         this.shutdownMonitor = new ShutdownMonitor(this);
     }
 
@@ -30,15 +34,16 @@ public final class LifecycleManager implements Runnable, ShutdownListener, Lifec
      * Constructs a new lifecycle manager that will create the given number of test executor threads.
      *
      * @param numExecutorThreads The number of test executor threads.
+     * @param writeToDb Whether or not to write the results to a database.
      * @return the new lifecycle manager.
      */
-    public static LifecycleManager withNumExecutors(int numExecutorThreads) {
-        return new LifecycleManager(numExecutorThreads);
+    public static LifecycleManager withNumExecutors(int numExecutorThreads, boolean writeToDb) {
+        return new LifecycleManager(numExecutorThreads, writeToDb);
     }
 
     @Override
     public void run() {
-        LifecycleObjectHolder lifecycleObjectHolder = new LifecycleObjectHolder(this.numExecutorThreads, SYSTEM_CAPACITY, this.shutdownMonitor, this.testSuiteQueue);
+        LifecycleObjectHolder lifecycleObjectHolder = new LifecycleObjectHolder(this.numExecutorThreads, SYSTEM_CAPACITY, this.writeToDb, this.shutdownMonitor, this.testSuiteQueue);
 
         try {
             // Create all of the threads and start them.
@@ -62,9 +67,14 @@ public final class LifecycleManager implements Runnable, ShutdownListener, Lifec
             lifecycleObjectHolder.waitForAllLifecycleObjectsToShutdown();
 
         } catch (Throwable t) {
-            System.err.println("Encountered an unexpected error.");
-            t.printStackTrace();
-            lifecycleObjectHolder.shutdownAllLifecycleObjects();
+            try {
+                System.err.println("Encountered an unexpected error.");
+                t.printStackTrace();
+                lifecycleObjectHolder.shutdownAllLifecycleObjects();
+            } catch (IOException e) {
+                System.err.println("Encountered an unexpected shutdown error.");
+                e.printStackTrace();
+            }
         } finally {
             this.isAlive = false;
             LOGGER.log("Exiting.");

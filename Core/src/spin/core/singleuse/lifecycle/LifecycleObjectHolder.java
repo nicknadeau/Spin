@@ -3,12 +3,17 @@ package spin.core.singleuse.lifecycle;
 import spin.core.singleuse.execution.TestExecutor;
 import spin.core.singleuse.execution.TestInfo;
 import spin.core.singleuse.execution.TestResult;
+import spin.core.singleuse.output.DatabaseConnectionHolder;
 import spin.core.singleuse.output.ResultOutputter;
 import spin.core.singleuse.runner.TestSuite;
 import spin.core.singleuse.runner.TestSuiteRunner;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
 
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,6 +30,7 @@ public final class LifecycleObjectHolder {
     private final int numExecutorThreads;
     private final ShutdownMonitor shutdownMonitor;
     private final CloseableBlockingQueue<TestSuite> testSuiteQueue;
+    private final boolean writeToDb;
     private State state = State.INITIAL;
     private List<CloseableBlockingQueue<TestInfo>> testInfoQueues = null;
     private List<CloseableBlockingQueue<TestResult>> testResultQueues = null;
@@ -39,10 +45,11 @@ public final class LifecycleObjectHolder {
      *
      * @param numThreads The number of executor threads to use.
      * @param queueCapacities The capacities on any communication queues.
+     * @param writeToDb Whether or not to write results to database.
      * @param shutdownMonitor The shutdown monitor to be shared by all threads.
      * @param testSuiteQueue The test suite queue, the queue used to push test suites into this managed system from outside.
      */
-    public LifecycleObjectHolder(int numThreads, int queueCapacities, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> testSuiteQueue) {
+    public LifecycleObjectHolder(int numThreads, int queueCapacities, boolean writeToDb, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> testSuiteQueue) {
         if (numThreads < 1) {
             throw new IllegalArgumentException("numThreads must be positive but was: " + numThreads);
         }
@@ -59,6 +66,7 @@ public final class LifecycleObjectHolder {
         this.queueCapacities = queueCapacities;
         this.shutdownMonitor = shutdownMonitor;
         this.testSuiteQueue = testSuiteQueue;
+        this.writeToDb = writeToDb;
     }
 
     /**
@@ -67,7 +75,7 @@ public final class LifecycleObjectHolder {
      * @param lifecycleListener The lifecycle listener to be notified when the last component has fulfilled its duty. It
      * is safe to shutdown every component when this is true.
      */
-    public void constructAllLifecycleObjects(LifecycleListener lifecycleListener) {
+    public void constructAllLifecycleObjects(LifecycleListener lifecycleListener) throws SQLException {
         if (this.state != State.INITIAL) {
             throw new IllegalStateException("cannot construct life-cycle objects because in state: " + this.state);
         }
@@ -76,12 +84,24 @@ public final class LifecycleObjectHolder {
         }
 
         LOGGER.log("Creating all life-cycle objects...");
+        DatabaseConnectionHolder databaseConnectionHolder = (this.writeToDb) ? new DatabaseConnectionHolder() : null;
+        if (databaseConnectionHolder != null) {
+            try (Connection connection = databaseConnectionHolder.getConnection()) {
+                clearDatabase(connection);
+                createTables(connection);
+            }
+        }
+
         this.testInfoQueues = createTestQueues(this.numExecutorThreads);
         this.testResultQueues = createTestResultQueues(this.numExecutorThreads);
 
         this.testExecutors = createExecutors(this.testInfoQueues, this.testResultQueues);
-        ResultOutputter resultOutputter = ResultOutputter.outputter(this.shutdownMonitor, lifecycleListener, this.testResultQueues);
-        this.testSuiteRunner = TestSuiteRunner.withOutgoingQueue(this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues);
+        ResultOutputter resultOutputter = (this.writeToDb)
+                ? ResultOutputter.outputterToConsoleAndDb(this.shutdownMonitor, lifecycleListener, this.testResultQueues, databaseConnectionHolder.getConnection())
+                : ResultOutputter.outputter(this.shutdownMonitor, lifecycleListener, this.testResultQueues);
+        this.testSuiteRunner = (this.writeToDb)
+                ? TestSuiteRunner.withDatabaseWriter(this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues, databaseConnectionHolder.getConnection())
+                : TestSuiteRunner.withOutgoingQueue(this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues);
 
         this.executorThreads = createExecutorThreads(this.testExecutors);
         this.outputterThread = new Thread(resultOutputter, "ResultOutputter");
@@ -111,7 +131,7 @@ public final class LifecycleObjectHolder {
     /**
      * Shuts down all of the life-cycled objects and closes any resources.
      */
-    public void shutdownAllLifecycleObjects() {
+    public void shutdownAllLifecycleObjects() throws IOException {
         if (this.state == State.OBJECTS_STARTED) {
             LOGGER.log("Shutting down...");
             closeQueues();
@@ -160,7 +180,7 @@ public final class LifecycleObjectHolder {
 
         List<TestExecutor> executors = new ArrayList<>();
         for (int i = 0; i < testsQueues.size(); i++) {
-            executors.add(TestExecutor.withQueues(this.shutdownMonitor, testsQueues.get(i), resultsQueues.get(i)));
+            executors.add(TestExecutor.withQueues(this.shutdownMonitor, testsQueues.get(i), resultsQueues.get(i), this.writeToDb));
         }
         return executors;
     }
@@ -201,5 +221,46 @@ public final class LifecycleObjectHolder {
         for (Thread executor : this.executorThreads) {
             executor.join();
         }
+    }
+
+    private void clearDatabase(Connection connection) throws SQLException {
+        Statement statement = connection.createStatement();
+        statement.execute("DROP TABLE IF EXISTS test_suite CASCADE");
+
+        statement = connection.createStatement();
+        statement.execute("DROP TABLE IF EXISTS test_class CASCADE");
+
+        statement = connection.createStatement();
+        statement.execute("DROP TABLE IF EXISTS test");
+    }
+
+    private void createTables(Connection connection) throws SQLException {
+        Statement statement = connection.createStatement();
+        statement.execute("CREATE TABLE test_suite("
+                + "id int PRIMARY KEY,"
+                + " num_tests int NOT NULL,"
+                + " num_success int,"
+                + " num_failures int,"
+                + " duration bigint);");
+
+        statement = connection.createStatement();
+        statement.execute("CREATE TABLE test_class("
+                + "id int PRIMARY KEY,"
+                + " name VARCHAR(100) NOT NULL,"
+                + " num_tests int NOT NULL,"
+                + " num_success int,"
+                + " num_failures int,"
+                + " duration bigint,"
+                + " suite int REFERENCES test_suite(id));");
+
+        statement = connection.createStatement();
+        statement.execute("CREATE TABLE test("
+                + "id SERIAL PRIMARY KEY,"
+                + " name VARCHAR(100) NOT NULL,"
+                + " is_success BIT NOT NULL,"
+                + " stdout TEXT,"
+                + " stderr TEXT,"
+                + " duration bigint NOT NULL,"
+                + " class int REFERENCES test_class(id));");
     }
 }

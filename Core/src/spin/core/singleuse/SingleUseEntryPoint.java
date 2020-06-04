@@ -46,11 +46,28 @@ public final class SingleUseEntryPoint {
                 System.exit(1);
             }
 
-            if (!Boolean.parseBoolean(System.getProperty("enable_logger"))) {
-                Logger.globalDisable();
+            String enableLoggerProperty = System.getProperty("enable_logger");
+            String writeToDbProperty = System.getProperty("write_to_db");
+            String numThreadsProperty = System.getProperty("num_threads");
+
+            if (enableLoggerProperty == null) {
+                throw new NullPointerException("Must provider an enable_logger property value.");
+            }
+            if (writeToDbProperty == null) {
+                throw new NullPointerException("Must provider a write_to_db property value.");
+            }
+            if (numThreadsProperty == null) {
+                throw new NullPointerException("Must provider a num_threads property value.");
             }
 
-            int numThreads = Integer.parseInt(System.getProperty("num_threads"));
+            if (!Boolean.parseBoolean(enableLoggerProperty)) {
+                Logger.globalDisable();
+            }
+            boolean writeToDb = Boolean.parseBoolean(writeToDbProperty);
+            int numThreads = Integer.parseInt(numThreadsProperty);
+            LOGGER.log("enable_logger property: " + enableLoggerProperty);
+            LOGGER.log("write_to_db property: " + writeToDbProperty);
+            LOGGER.log("num_threads property: " + numThreadsProperty);
 
             overrideOutputStreams();
 
@@ -74,7 +91,7 @@ public final class SingleUseEntryPoint {
             }
 
             // Create the lifecycle manager. This class will start up all the components of the system and manage them.
-            LifecycleManager lifecycleManager = LifecycleManager.withNumExecutors(numThreads);
+            LifecycleManager lifecycleManager = LifecycleManager.withNumExecutors(numThreads, writeToDb);
             shutdownMonitor = lifecycleManager.getShutdownMonitor();
             Thread lifecycleManagerThread = new Thread(lifecycleManager, "LifecycleManager");
             lifecycleManagerThread.start();
