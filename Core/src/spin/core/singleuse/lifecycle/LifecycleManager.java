@@ -19,14 +19,16 @@ public final class LifecycleManager implements Runnable, ShutdownListener, Lifec
     private final ShutdownMonitor shutdownMonitor;
     private final int numExecutorThreads;
     private final boolean writeToDb;
+    private final String dbConfigFile;
     private volatile boolean isAlive = true;
 
-    private LifecycleManager(int numThreads, boolean writeToDb) {
+    private LifecycleManager(int numThreads, boolean writeToDb, String dbConfigFile) {
         if (numThreads < 1) {
             throw new IllegalArgumentException("numThreads must be positive but was: " + numThreads);
         }
         this.numExecutorThreads = numThreads;
         this.writeToDb = writeToDb;
+        this.dbConfigFile = dbConfigFile;
         this.shutdownMonitor = new ShutdownMonitor(this);
     }
 
@@ -35,10 +37,11 @@ public final class LifecycleManager implements Runnable, ShutdownListener, Lifec
      *
      * @param numExecutorThreads The number of test executor threads.
      * @param writeToDb Whether or not to write the results to a database.
+     * @param dbConfigFile The path to the database configuration file.
      * @return the new lifecycle manager.
      */
-    public static LifecycleManager withNumExecutors(int numExecutorThreads, boolean writeToDb) {
-        return new LifecycleManager(numExecutorThreads, writeToDb);
+    public static LifecycleManager withNumExecutors(int numExecutorThreads, boolean writeToDb, String dbConfigFile) {
+        return new LifecycleManager(numExecutorThreads, writeToDb, dbConfigFile);
     }
 
     @Override
@@ -47,7 +50,7 @@ public final class LifecycleManager implements Runnable, ShutdownListener, Lifec
 
         try {
             // Create all of the threads and start them.
-            lifecycleObjectHolder.constructAllLifecycleObjects(this);
+            lifecycleObjectHolder.constructAllLifecycleObjects(this, this.dbConfigFile);
             lifecycleObjectHolder.startAllLifecycleObjects();
 
             // Wait until either a panic signal arrives or a shutdown request.

@@ -3,13 +3,14 @@ package spin.core.singleuse.lifecycle;
 import spin.core.singleuse.execution.TestExecutor;
 import spin.core.singleuse.execution.TestInfo;
 import spin.core.singleuse.execution.TestResult;
-import spin.core.singleuse.output.DatabaseConnectionHolder;
+import spin.core.singleuse.output.DatabaseConnectionProvider;
 import spin.core.singleuse.output.ResultOutputter;
 import spin.core.singleuse.runner.TestSuite;
 import spin.core.singleuse.runner.TestSuiteRunner;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
 
+import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -74,8 +75,9 @@ public final class LifecycleObjectHolder {
      *
      * @param lifecycleListener The lifecycle listener to be notified when the last component has fulfilled its duty. It
      * is safe to shutdown every component when this is true.
+     * @param dbConfigPath The path to the database configuration file.
      */
-    public void constructAllLifecycleObjects(LifecycleListener lifecycleListener) throws SQLException {
+    public void constructAllLifecycleObjects(LifecycleListener lifecycleListener, String dbConfigPath) throws SQLException, IOException {
         if (this.state != State.INITIAL) {
             throw new IllegalStateException("cannot construct life-cycle objects because in state: " + this.state);
         }
@@ -84,9 +86,11 @@ public final class LifecycleObjectHolder {
         }
 
         LOGGER.log("Creating all life-cycle objects...");
-        DatabaseConnectionHolder databaseConnectionHolder = (this.writeToDb) ? new DatabaseConnectionHolder() : null;
-        if (databaseConnectionHolder != null) {
-            try (Connection connection = databaseConnectionHolder.getConnection()) {
+        DatabaseConnectionProvider databaseConnectionProvider = (this.writeToDb) ? new DatabaseConnectionProvider() : null;
+        if (databaseConnectionProvider != null) {
+            databaseConnectionProvider.initialize(new File(dbConfigPath));
+
+            try (Connection connection = databaseConnectionProvider.getConnection()) {
                 clearDatabase(connection);
                 createTables(connection);
             }
@@ -97,10 +101,10 @@ public final class LifecycleObjectHolder {
 
         this.testExecutors = createExecutors(this.testInfoQueues, this.testResultQueues);
         ResultOutputter resultOutputter = (this.writeToDb)
-                ? ResultOutputter.outputterToConsoleAndDb(this.shutdownMonitor, lifecycleListener, this.testResultQueues, databaseConnectionHolder.getConnection())
+                ? ResultOutputter.outputterToConsoleAndDb(this.shutdownMonitor, lifecycleListener, this.testResultQueues, databaseConnectionProvider.getConnection())
                 : ResultOutputter.outputter(this.shutdownMonitor, lifecycleListener, this.testResultQueues);
         this.testSuiteRunner = (this.writeToDb)
-                ? TestSuiteRunner.withDatabaseWriter(this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues, databaseConnectionHolder.getConnection())
+                ? TestSuiteRunner.withDatabaseWriter(this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues, databaseConnectionProvider.getConnection())
                 : TestSuiteRunner.withOutgoingQueue(this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues);
 
         this.executorThreads = createExecutorThreads(this.testExecutors);

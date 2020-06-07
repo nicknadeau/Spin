@@ -48,6 +48,7 @@ public final class SingleUseEntryPoint {
 
             String enableLoggerProperty = System.getProperty("enable_logger");
             String writeToDbProperty = System.getProperty("write_to_db");
+            String dbConfigPath = System.getProperty("db_config_path");
             String numThreadsProperty = System.getProperty("num_threads");
 
             if (enableLoggerProperty == null) {
@@ -55,6 +56,9 @@ public final class SingleUseEntryPoint {
             }
             if (writeToDbProperty == null) {
                 throw new NullPointerException("Must provider a write_to_db property value.");
+            }
+            if (dbConfigPath == null) {
+                throw new NullPointerException("Must provider a db_config_path property value.");
             }
             if (numThreadsProperty == null) {
                 throw new NullPointerException("Must provider a num_threads property value.");
@@ -67,6 +71,7 @@ public final class SingleUseEntryPoint {
             int numThreads = Integer.parseInt(numThreadsProperty);
             LOGGER.log("enable_logger property: " + enableLoggerProperty);
             LOGGER.log("write_to_db property: " + writeToDbProperty);
+            LOGGER.log("db_config_path property: " + dbConfigPath);
             LOGGER.log("num_threads property: " + numThreadsProperty);
 
             overrideOutputStreams();
@@ -91,7 +96,7 @@ public final class SingleUseEntryPoint {
             }
 
             // Create the lifecycle manager. This class will start up all the components of the system and manage them.
-            LifecycleManager lifecycleManager = LifecycleManager.withNumExecutors(numThreads, writeToDb);
+            LifecycleManager lifecycleManager = LifecycleManager.withNumExecutors(numThreads, writeToDb, dbConfigPath);
             shutdownMonitor = lifecycleManager.getShutdownMonitor();
             Thread lifecycleManagerThread = new Thread(lifecycleManager, "LifecycleManager");
             lifecycleManagerThread.start();

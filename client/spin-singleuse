@@ -95,4 +95,7 @@ else
 	classpath='spin-singleuse.jar:junit-4.12.jar'
 fi
 
-java "$verbose_property" "$persist_property" "$num_threads_property" -cp "$classpath" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$num_tests" $tests $dependencies
+# Set the database config file path property here. We hardcode this. Note this is only used when -p is given.
+dbconfig_property='-Ddb_config_path=./config/db_config.txt'
+
+java "$verbose_property" "$persist_property" "$dbconfig_property" "$num_threads_property" -cp "$classpath" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$num_tests" $tests $dependencies

@@ -1,0 +1,17 @@
+# Lines that begin with # will be ignored.
+# The format of this file is a simple key-value pairing as follows:
+#
+# host=<host name>
+# port=<port>
+# database=<database name>
+# user=<user name>
+# password=<password>
+#
+# All 5 keys must be present. Order does not matter. If the value does not exist leave it blank as such:
+# password=
+
+host=localhost
+port=5432
+database=spin_results
+user=postgres
+password=postgres
