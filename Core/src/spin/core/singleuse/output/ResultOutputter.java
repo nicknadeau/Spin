@@ -78,6 +78,7 @@ public final class ResultOutputter implements Runnable {
     @Override
     public void run() {
         try {
+            System.out.println("\n===============================================================");
             while (this.isAlive) {
                 for (CloseableBlockingQueue<TestResult> incomingResultQueue : this.incomingResultQueues) {
                     if (!this.isAlive) {
@@ -89,7 +90,6 @@ public final class ResultOutputter implements Runnable {
                     TestResult result = incomingResultQueue.poll(5, TimeUnit.MINUTES);
 
                     if (result != null) {
-                        System.out.println("\n===============================================================");
                         LOGGER.log("New result obtained.");
 
                         // Report the test as successful or failed.
