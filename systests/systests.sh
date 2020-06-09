@@ -25,7 +25,7 @@ then
 	mkdir config && \
 	cp ../config/db_config.txt config/ && \
 	echo '>>>> Auto-generating the project to test.' && \
-	python spin/java_class_tool.py --generate 3 3 4 'empty' && \
+	python3 spin/java_class_tool.py --generate 3 3 4 'empty' && \
 	echo '>>>> Compiling the auto-generated project.' && \
 	ant build && \
 	echo '============== System Tests (Run) ==============' && \

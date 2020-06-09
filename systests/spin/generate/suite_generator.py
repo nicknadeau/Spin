@@ -96,7 +96,7 @@ def __create_java_class(class_package, class_name, num_tests, behaviour):
     """
     path = "./" + class_package.replace('.', '/') + "/" + class_name + ".java"
     if os.path.exists(path):
-        print "Cannot create java class (" + class_package + class_name + "): file already exists!"
+        print("Cannot create java class (" + class_package + class_name + "): file already exists!")
         quit(1)
 
     java_file = open(path, "w+")
@@ -148,6 +148,6 @@ def create_java_test_suite(num_packages, num_classes, num_tests, behaviour):
     for i in range(len(package_names)):
         __create_directories(package_names[i])
         if i == len(package_names) - 1:
-            __create_java_classes(package_names[i], num_classes_per_package + remaining_classes, num_tests, behaviour)
+            __create_java_classes(package_names[i], int(num_classes_per_package + remaining_classes), num_tests, behaviour)
         else :
-            __create_java_classes(package_names[i], num_classes_per_package, num_tests, behaviour)
+            __create_java_classes(package_names[i], int(num_classes_per_package), num_tests, behaviour)
