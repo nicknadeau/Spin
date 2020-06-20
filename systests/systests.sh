@@ -24,36 +24,24 @@ then
 	cp ../lib/junit-4.12.jar . && \
 	mkdir config && \
 	cp ../config/db_config.txt config/ && \
-	echo '>>>> Auto-generating the project to test.' && \
-	python3 spin/java_class_tool.py --generate 3 3 4 'empty' && \
-	echo '>>>> Compiling the auto-generated project.' && \
-	ant build && \
+	echo '>>>> Auto-generating the project to test.'
+	echo 'TODO: auto-gen tool under development'
+	echo '>>>> Compiling the auto-generated project.'
+	echo 'TODO: auto-gen tool under development'
+
 	echo '============== System Tests (Run) ==============' && \
 	echo '>>>> Redirecting all output to file: spin.log'
-
-	if [ $# -eq 2 ]
-	then
-		if [ "$2" == '-v' ]
-		then
-			./spin-singleuse -v -p 4 build/test
-		else
-			help
-			exit 1
-		fi
-	else
-		./spin-singleuse -v -p 4 build/test &> spin.log
-	fi
-
+	echo 'TODO: auto-gen tool under development'
 	echo '============== System Tests (Complete) =============='
 	cd $curr_dir
 
 elif [ "$1" == '--clean' ]
 then
 	ant clean
-	rm spin.log
 	rm *.jar
 	rm spin-singleuse
 	rm -rf config
+	rm gen_file
 else
 	help
 	exit 1
