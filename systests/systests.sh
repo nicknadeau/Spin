@@ -1,6 +1,6 @@
 #!/bin/bash
 
-help () {
+function print_help () {
 	echo 'USAGE: systests.sh <action>'
 	echo -e "\t"'action:'
 	echo -e "\t\t"'--run [-v]: runs the Spin system tests.'
@@ -8,9 +8,19 @@ help () {
 	echo -e "\t\t"'--clean: cleans up the auto-generated system tests.'
 }
 
+function clean() {
+	ant clean
+	rm *.jar
+	rm spin-singleuse
+	rm -rf config
+	rm gen_file
+	rm spin.log
+}
+
 if [ "$1" == '--run' ]
 then
 	curr_dir=$(pwd)
+	clean
 
 	echo '============== System Tests (Prepare) ==============' && \
 	echo '>>>> Building the single-use Spin project.' && \
@@ -24,25 +34,35 @@ then
 	cp ../lib/junit-4.12.jar . && \
 	mkdir config && \
 	cp ../config/db_config.txt config/ && \
-	echo '>>>> Auto-generating the project to test.'
-	echo 'TODO: auto-gen tool under development'
-	echo '>>>> Compiling the auto-generated project.'
-	echo 'TODO: auto-gen tool under development'
-
+	echo '>>>> Creating gen file.' && \
+	python3 spin/suite_autogen.py --gen_file -new . a 4 3 '[0, 9, 3, 6]' && \
+	echo '>>>> Auto-generating the project to test.' && \
+	python3 spin/suite_autogen.py --generate gen_file example_gen && \
+	echo '>>>> Compiling the auto-generated project.' && \
+	ant -Dproject_name="example_gen" build_tests && \
+	rm -rf example_gen && \
 	echo '============== System Tests (Run) ==============' && \
 	echo '>>>> Redirecting all output to file: spin.log'
-	echo 'TODO: auto-gen tool under development'
+	if [ "$#" -eq 2 ]
+	then
+		if [ "$2" == '-v' ]
+		then
+			./spin-singleuse -v -p 4 build/example_gen/test '.class'
+		else
+			print_help
+			exit 1
+		fi
+	else
+		./spin-singleuse -v -p 4 build/example_gen/test '.class' &> spin.log
+	fi
+	echo 'TODO: evaluate the results'
 	echo '============== System Tests (Complete) =============='
 	cd $curr_dir
 
 elif [ "$1" == '--clean' ]
 then
-	ant clean
-	rm *.jar
-	rm spin-singleuse
-	rm -rf config
-	rm gen_file
+	clean
 else
-	help
+	print_help
 	exit 1
 fi

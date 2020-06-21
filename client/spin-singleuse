@@ -1,11 +1,12 @@
 #!/bin/bash
 
 help () {
-	echo 'USAGE: spin [-v] [-p] <num threads> <built-tests-dir> [dependencies]...'
+	echo 'USAGE: spin [-v] [-p] <num threads> <built-tests-dir> <matcher> [dependencies]...'
 	echo -e "\t"'-v [OPTIONAL]: if present this flag specifies to run in verbose logging mode.'
 	echo -e "\t"'-p [OPTIONAL]: if present this flag specifies to persist the test results in a database.'
 	echo -e "\t"'num threads: the number of threads to use to run the tests with.'
 	echo -e "\t"'built-tests-dir: a directory that contains all of the built .class test files to be run.'
+	echo -e "\t"'matcher: the pattern to match Java tests against (eg: Test.java matches files ending with Test.java)'
 	echo -e "\t"'dependencies [OPTIONAL]: zero or more .class or .jar files required to run the tests.'
 }
 
@@ -59,6 +60,7 @@ fi
 # Determine the indices of the non-optional arguments.
 num_threads_index=$((1+num_optionals))
 test_dir_index=$((1+num_threads_index))
+matcher_index=$((1+test_dir_index))
 
 # Next argument must be a number, we verify that and this is the number of threads to use.
 num_threads=${!num_threads_index}
@@ -70,12 +72,14 @@ fi
 
 num_threads_property="-Dnum_threads=$num_threads"
 test_dir="${!test_dir_index}"
+matcher="${!matcher_index}"
+match='*'"$matcher"
 num_tests=0
 
 # Grab all test files in the given test base directory. We consider a test file a file ending with Test.class.
 for file in $(find "$test_dir" -type f)
 do
-	if [[ $(realpath $file) == *"Test.class" ]]
+	if [[ $(realpath $file) == $match ]]
 	then
 		tests="$tests $(realpath $file)"
 		num_tests=$((num_tests+1))
@@ -83,7 +87,7 @@ do
 done
 
 # Collect any given dependencies and then run the program.
-for dependency in ${@:$((test_dir_index+1))}
+for dependency in ${@:$((matcher_index+1))}
 do
 	dependencies="$dependencies $(realpath $dependency)"
 done
