@@ -24,10 +24,10 @@ To run the tests on the single-use version of Spin run the following commands:
 cd demo/
 ./example-singleuse.sh
 cd example/
-./spin-singleuse 4 build/test build/src lib/*
+./spin-singleuse 4 build/test 'Test.class' build/src lib/*
 ```
 
-The above command will run Spin using 4 threads. It will run all of the tests in the given test directory `build/test` and it supplies all of the dependency `.class` and `.jar` files required to run these tests, located in the `build/src` and `lib` directories.
+The above command will run Spin using 4 threads. It will run all of the tests whose file names end in the pattern 'Test.class' (eg. ThisTest.class) in the given test directory `build/test` and it supplies all of the dependency `.class` and `.jar` files required to run these tests, located in the `build/src` and `lib` directories.
 
 To clean up when finished run:
 
