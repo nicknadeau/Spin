@@ -32,14 +32,15 @@ then
 	cp ../Core/dist/spin-singleuse.jar . && \
 	cp ../Core/lib/postgresql-42.2.12.jar . && \
 	cp ../lib/junit-4.12.jar . && \
+	cp ../Example/lib/hamcrest-all-1.3.jar . && \
 	mkdir config && \
 	cp ../config/db_config.txt config/ && \
 	echo '>>>> Creating gen file.' && \
-	python3 spin/suite_autogen.py --gen_file -new . a 4 3 '[0, 9, 3, 6]' && \
+	python3 spin/suite_autogen.py --gen_file -new . a 4 3 '[0, 9, 3, 6, 11, 12, 13]' && \
 	echo '>>>> Auto-generating the project to test.' && \
 	python3 spin/suite_autogen.py --generate gen_file example_gen && \
 	echo '>>>> Compiling the auto-generated project.' && \
-	ant -Dproject_name="example_gen" build_tests && \
+	ant -Dproject_name="example_gen" build_tests_and_src && \
 	rm -rf example_gen && \
 	echo '============== System Tests (Run) ==============' && \
 	echo '>>>> Redirecting all output to file: spin.log'
@@ -47,13 +48,13 @@ then
 	then
 		if [ "$2" == '-v' ]
 		then
-			./spin-singleuse -v -p 4 build/example_gen/test '.class'
+			./spin-singleuse -v -p 4 build/example_gen/test '.class' build/example_gen/src junit-4.12.jar hamcrest-all-1.3.jar
 		else
 			print_help
 			exit 1
 		fi
 	else
-		./spin-singleuse -v -p 4 build/example_gen/test '.class' &> spin.log
+		./spin-singleuse -v -p 4 build/example_gen/test '.class' build/example_gen/src junit-4.12.jar hamcrest-all-1.3.jar &> spin.log
 	fi
 	echo 'TODO: evaluate the results'
 	echo '============== System Tests (Complete) =============='

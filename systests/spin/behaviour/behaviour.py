@@ -11,6 +11,7 @@ class Behaviour:
         :type test_name: str
         """
         self.content = []
+        self.source_objects = set()
         self.fields = set()
         self.imports = set()
         self.throws = False
@@ -74,6 +75,24 @@ class Behaviour:
             self.fields = {"private static final AtomicInteger NUM_CLASS_INVOKES = new AtomicInteger(0);"}
             self.imports = {"java.util.concurrent.atomic.AtomicInteger;"}
             self.desc = "stderr-class-count"
+        elif code == 11:
+            self.source_objects = {"s.a.Ticker"}
+            self.content = ["this.ticker.tick();"]
+            self.fields = {"private final Ticker ticker = new Ticker();"}
+            self.imports = {"s.a.Ticker;"}
+            self.desc = "source-tick"
+        elif code == 12:
+            self.source_objects = {"s.a.Ticker"}
+            self.content = ["System.out.println(this.ticker.getTicks());"]
+            self.fields = {"private final Ticker ticker = new Ticker();"}
+            self.imports = {"s.a.Ticker;"}
+            self.desc = "stdout-get-ticks"
+        elif code == 13:
+            self.source_objects = {"s.a.Ticker"}
+            self.content = ["System.err.println(this.ticker.getTicks());"]
+            self.fields = {"private final Ticker ticker = new Ticker();"}
+            self.imports = {"s.a.Ticker;"}
+            self.desc = "stderr-get-ticks"
 
     def __str__(self):
         return "Behaviour({})".format(self.desc)
@@ -93,6 +112,7 @@ class Behaviour:
         if self.terminates:
             raise AssertionError("Cannot merge {} because this is a terminating behaviour.".format(self))
         new_behaviour = Behaviour(-1)
+        new_behaviour.source_objects = self.source_objects.copy() | other.source_objects.copy()
         new_behaviour.content = self.content.copy() + other.content.copy()
         new_behaviour.fields = self.fields.copy() | other.fields.copy()
         new_behaviour.imports = self.imports.copy() | other.imports.copy()

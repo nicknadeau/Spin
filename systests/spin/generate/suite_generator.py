@@ -1,5 +1,6 @@
 import os
 
+from spin.behaviour import source_object_helper
 from spin.builder import gen_file_rep
 
 
@@ -28,6 +29,7 @@ def generate_suite(gen_file_path, project_name):
 
     # Make a first pass through the gen file to collect all of the class header information so we can easily write.
     header_info = __read_class_header_info(gen_file_path)
+    __write_source_objects(project_name, header_info)
 
     package_name = None
     curr_class_name = None
@@ -39,7 +41,7 @@ def generate_suite(gen_file_path, project_name):
             if gen_file_rep.is_package_desc(stripped_line):
                 # Set our current package name and create all of the directories required by the package name.
                 package_name = gen_file_rep.get_package_name(stripped_line)
-                __create_package_directories(project_name, package_name)
+                __create_test_package_directories(project_name, package_name)
             elif gen_file_rep.is_test_desc(stripped_line):
                 class_name = gen_file_rep.get_class_name(stripped_line)
                 test_name = gen_file_rep.get_test_name(stripped_line)
@@ -48,7 +50,7 @@ def generate_suite(gen_file_path, project_name):
                 if curr_class_name is None:
                     # This is our first ever read, we open a new Java file and write its header and this first test.
                     curr_class_name = class_name
-                    java_file = __open_java_file(project_name, package_name, curr_class_name)
+                    java_file = __open_java_test_file(project_name, package_name, curr_class_name)
                     __write_header(java_file, package_name, class_name, header_info)
                     __write_test(java_file, test_name, behaviour)
 
@@ -62,7 +64,7 @@ def generate_suite(gen_file_path, project_name):
 
                     # Open a new file for the next Java class, write the header and this first test.
                     curr_class_name = class_name
-                    java_file = __open_java_file(project_name, package_name, curr_class_name)
+                    java_file = __open_java_test_file(project_name, package_name, curr_class_name)
                     __write_header(java_file, package_name, class_name, header_info)
                     __write_test(java_file, test_name, behaviour)
 
@@ -98,15 +100,72 @@ def __read_class_header_info(gen_file_path):
                 fully_qualified_class_name = "{}.{}".format(curr_package, class_name)
 
                 if fully_qualified_class_name not in header_info:
-                    header_info[fully_qualified_class_name] = {"imports": behaviour.imports, "fields": behaviour.fields}
+                    header_info[fully_qualified_class_name] = {
+                        "imports": behaviour.imports,
+                        "fields": behaviour.fields,
+                        "source-objects": behaviour.source_objects
+                    }
                 else:
                     class_header_info = header_info[fully_qualified_class_name]
                     class_header_info["imports"] = class_header_info["imports"] | behaviour.imports
                     class_header_info["fields"] = class_header_info["fields"] | behaviour.fields
+                    class_header_info["source-objects"] = class_header_info["source-objects"] | behaviour.source_objects
     return header_info
 
 
-def __open_java_file(project_name, package_name, class_name):
+def __write_source_objects(project_name, header_info):
+    """
+    Writes all of the Java src classes for the project as defined in the given header information.
+
+    :param project_name: the name of this project.
+    :param header_info: the header information for all classes defined in the gen file.
+    :return: None
+    """
+    all_source_objects = set()
+    for class_name in header_info:
+        all_source_objects = all_source_objects | header_info[class_name]["source-objects"]
+    for source_object in all_source_objects:
+        __write_source_object(project_name, source_object)
+
+
+def __write_source_object(project_name, source_object_name):
+    """
+    Writes a new .java file in the src directory for a class whose fully-qualified name is the given source object name.
+
+    :param project_name: the name of this project.
+    :param source_object_name: the fully-qualified name of the Java src class to write.
+    :return: None
+    :type project_name: str
+    :type source_object_name: str
+    """
+    package_name = source_object_helper.get_package_name(source_object_name)
+    class_name = source_object_helper.get_class_name(source_object_name)
+
+    __create_src_package_directories(project_name, package_name)
+    java_file = __open_java_src_file(project_name, package_name, class_name)
+    try:
+        source_object_helper.write_source_object_to_file(java_file, source_object_name)
+    finally:
+        java_file.close()
+
+
+def __open_java_test_file(project_name, package_name, class_name):
+    """
+    Returns a newly opened file for a .java Java test file. This will will be empty and ready to be written to.
+
+    :param project_name: the project name.
+    :param package_name: the package name of the class defined by this Java file.
+    :param class_name: the class defined by this Java file.
+    :return: None
+    :type project_name: str
+    :type package_name: str
+    :type class_name: str
+    """
+    path = "{}/{}/{}.java".format(__new_project_test_dir_path(project_name), package_name.replace(".", "/"), class_name)
+    return open(path, "w+")
+
+
+def __open_java_src_file(project_name, package_name, class_name):
     """
     Returns a newly opened file for a .java Java source file. This will will be empty and ready to be written to.
 
@@ -118,7 +177,7 @@ def __open_java_file(project_name, package_name, class_name):
     :type package_name: str
     :type class_name: str
     """
-    path = "{}/{}/{}.java".format(__new_project_test_dir_path(project_name), package_name.replace(".", "/"), class_name)
+    path = "{}/{}/{}.java".format(__new_project_source_dir_path(project_name), package_name.replace(".", "/"), class_name)
     return open(path, "w+")
 
 
@@ -175,9 +234,10 @@ def __write_footer(java_file):
     java_file.write("\n}\n")
 
 
-def __create_package_directories(project_name, package_name):
+def __create_test_package_directories(project_name, package_name):
     """
     Creates all of the directories on disk required by the specified Java package name given the project name.
+    This function is used to create packages belonging to classes in the test directory.
 
     :param project_name: the name of this project.
     :param package_name: the package name to create directories for.
@@ -186,6 +246,20 @@ def __create_package_directories(project_name, package_name):
     :type package_name: str
     """
     os.makedirs("{}/{}".format(__new_project_test_dir_path(project_name), package_name.replace(".", "/")))
+
+
+def __create_src_package_directories(project_name, package_name):
+    """
+    Creates all of the directories on disk required by the specified Java package name given the project name.
+    This function is used to create packages belonging to classes in the src directory.
+
+    :param project_name: the name of this project.
+    :param package_name: the package name to create directories for.
+    :return: None
+    :type project_name: str
+    :type package_name: str
+    """
+    os.makedirs("{}/{}".format(__new_project_source_dir_path(project_name), package_name.replace(".", "/")))
 
 
 def __new_project_test_dir_path(project_name):
@@ -199,3 +273,16 @@ def __new_project_test_dir_path(project_name):
     :return:type: str
     """
     return "{}/test".format(project_name)
+
+
+def __new_project_source_dir_path(project_name):
+    """
+    Returns the path of the src directory for the specified project, as a relative path starting at the current
+    working directory.
+
+    :param project_name: the project name.
+    :return: the project src directory.
+    :type project_name: str
+    :return:type: str
+    """
+    return "{}/src".format(project_name)

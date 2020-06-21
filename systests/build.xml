@@ -6,7 +6,29 @@
 
     <path id="classpath-test">
         <pathelement location="${workspace}/junit-4.12.jar"/>
+        <pathelement location="${workspace}/hamcrest-all-1.3.jar"/>
     </path>
+
+    <target name="build_tests_and_src" depends="clean-build-dir">
+        <property name="project_name" value=""/>
+
+        <property name="built-src" value="${build-dir}/${project_name}/src"/>
+        <property name="built-tests" value="${build-dir}/${project_name}/test"/>
+        <property name="src-dir" value="${project_name}/src"/>
+        <property name="test-dir" value="${project_name}/test"/>
+
+        <mkdir dir="${built-src}"/>
+        <javac debug="true" debuglevel="source,lines,vars" includeantruntime="false" release="9" srcdir="${src-dir}" destdir="${built-src}" includes="**/*.java,module-info.java">
+        </javac>
+
+        <mkdir dir="${built-tests}"/>
+        <javac debug="true" debuglevel="source,lines,vars" includeantruntime="false" release="9" srcdir="${test-dir}" destdir="${built-tests}" includes="**/*.java,module-info.java">
+            <classpath>
+                <pathelement path="${built-src}"/>
+                <path refid="classpath-test"/>
+            </classpath>
+        </javac>
+    </target>
 
     <target name="build_tests" depends="clean-build-dir">
         <property name="project_name" value=""/>
