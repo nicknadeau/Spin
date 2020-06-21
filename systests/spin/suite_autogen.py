@@ -1,6 +1,7 @@
 import sys
 import ast
 from spin.builder import gen_file_builder
+from spin.generate import suite_generator
 
 
 def usage():
@@ -39,6 +40,11 @@ def usage():
     print("\t\tclass index: the index of the Java test class defined in the package to append tests to.")
     print("\t\tnum tests: the number of Java test methods to append to the specified Java test class.")
     print("\t\tbehaviours: a list of the Java test behaviours defined for each Java test to be appended.")
+    print("--generate <gen file path> <project name>")
+    print("\tGenerates a test suite based off the suite description in the provided gen file. The source code of the")
+    print("\tsuite will be found in a directory whose name is the given project name.")
+    print("\n\tgen file path: the file path of the gen file.")
+    print("\n\tproject name: the name of the directory that will be created and the suite will be generated within.")
 
 
 if __name__ == '__main__':
@@ -80,6 +86,13 @@ if __name__ == '__main__':
             print("Unrecognized request ({}) for action: {}".format(request, sys.argv[1]))
             print(usage())
             quit(1)
+
+    elif action == '--generate':
+        if len(sys.argv) != 4:
+            print("Incorrect number of args given ({}) for action {}".format(len(sys.argv) - 2, action))
+            print(usage())
+            quit(1)
+        suite_generator.generate_suite(sys.argv[2], sys.argv[3])
 
     else:
         print("Unrecognized action: {}".format(sys.argv[1]))
