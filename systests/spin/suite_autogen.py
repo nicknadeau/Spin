@@ -2,6 +2,7 @@ import sys
 import ast
 from spin.builder import gen_file_builder
 from spin.generate import suite_generator
+from spin.validate import suite_validator
 
 
 def usage():
@@ -44,7 +45,12 @@ def usage():
     print("\tGenerates a test suite based off the suite description in the provided gen file. The source code of the")
     print("\tsuite will be found in a directory whose name is the given project name.")
     print("\n\tgen file path: the file path of the gen file.")
-    print("\n\tproject name: the name of the directory that will be created and the suite will be generated within.")
+    print("\tproject name: the name of the directory that will be created and the suite will be generated within.")
+    print("--validate <gen file path> <db config path> <suite id>")
+    print("\tValidates a test suite based off the suite description in the provided gen file.")
+    print("\n\tgen file path: the file path of the gen file.")
+    print("\tdb config path: the file path of the database config file.")
+    print("\tsuite id: the id of the suite to evaluate in the postgres database.")
 
 
 if __name__ == '__main__':
@@ -93,6 +99,13 @@ if __name__ == '__main__':
             print(usage())
             quit(1)
         suite_generator.generate_suite(sys.argv[2], sys.argv[3])
+
+    elif action == '--validate':
+        if len(sys.argv) != 5:
+            print("Incorrect number of args given ({}) for action {}".format(len(sys.argv) - 2, action))
+            print(usage())
+            quit(1)
+        suite_validator.validate_suite(sys.argv[2], sys.argv[3], int(sys.argv[4]))
 
     else:
         print("Unrecognized action: {}".format(sys.argv[1]))

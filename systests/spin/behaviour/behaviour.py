@@ -10,6 +10,7 @@ class Behaviour:
         :type class_name: str
         :type test_name: str
         """
+        self.codes = [code]
         self.content = []
         self.source_objects = set()
         self.fields = set()
@@ -56,22 +57,22 @@ class Behaviour:
         elif code == 7:
             if test_name is None:
                 raise ValueError("Behaviour code {} requires non-None test name".format(code))
-            self.content = ["System.out.println(this.num{}Invokes);".format(test_name)]
+            self.content = ["System.out.println(\"testInvokes=\" + this.num{}Invokes);".format(test_name)]
             self.fields = {"private int num{}Invokes = 0;".format(test_name)}
             self.desc = "stdout-test-count"
         elif code == 8:
             if test_name is None:
                 raise ValueError("Behaviour code {} requires non-None test name".format(code))
-            self.content = ["System.err.println(this.num{}Invokes);".format(test_name)]
+            self.content = ["System.err.println(\"testInvokes=\" + this.num{}Invokes);".format(test_name)]
             self.fields = {"private int num{}Invokes = 0;".format(test_name)}
             self.desc = "stderr-test-count"
         elif code == 9:
-            self.content = ["System.out.println(NUM_CLASS_INVOKES.get());"]
+            self.content = ["System.out.println(\"classInvokes=\" + NUM_CLASS_INVOKES.get());"]
             self.fields = {"private static final AtomicInteger NUM_CLASS_INVOKES = new AtomicInteger(0);"}
             self.imports = {"java.util.concurrent.atomic.AtomicInteger;"}
             self.desc = "stdout-class-count"
         elif code == 10:
-            self.content = ["System.err.println(NUM_CLASS_INVOKES.get());"]
+            self.content = ["System.err.println(\"classInvokes=\" + NUM_CLASS_INVOKES.get());"]
             self.fields = {"private static final AtomicInteger NUM_CLASS_INVOKES = new AtomicInteger(0);"}
             self.imports = {"java.util.concurrent.atomic.AtomicInteger;"}
             self.desc = "stderr-class-count"
@@ -83,13 +84,13 @@ class Behaviour:
             self.desc = "source-tick"
         elif code == 12:
             self.source_objects = {"s.a.Ticker"}
-            self.content = ["System.out.println(this.ticker.getTicks());"]
+            self.content = ["System.out.println(\"ticks=\" + this.ticker.getTicks());"]
             self.fields = {"private final Ticker ticker = new Ticker();"}
             self.imports = {"s.a.Ticker;"}
             self.desc = "stdout-get-ticks"
         elif code == 13:
             self.source_objects = {"s.a.Ticker"}
-            self.content = ["System.err.println(this.ticker.getTicks());"]
+            self.content = ["System.err.println(\"ticks=\" + this.ticker.getTicks());"]
             self.fields = {"private final Ticker ticker = new Ticker();"}
             self.imports = {"s.a.Ticker;"}
             self.desc = "stderr-get-ticks"
@@ -112,6 +113,7 @@ class Behaviour:
         if self.terminates:
             raise AssertionError("Cannot merge {} because this is a terminating behaviour.".format(self))
         new_behaviour = Behaviour(-1)
+        new_behaviour.codes = self.codes.copy() + other.codes.copy()
         new_behaviour.source_objects = self.source_objects.copy() | other.source_objects.copy()
         new_behaviour.content = self.content.copy() + other.content.copy()
         new_behaviour.fields = self.fields.copy() | other.fields.copy()
