@@ -158,6 +158,23 @@ public final class ResultOutputter implements Runnable {
         }
     }
 
+    /**
+     * Returns true iff this outputter is still alive.
+     *
+     * @return whether or not this outputter is alive.
+     */
+    public boolean isAlive() {
+        return this.isAlive;
+    }
+
+    /**
+     * Shuts down this outputter. Note that the outputter should be interrupted after invoking this method for immediate
+     * effectiveness.
+     */
+    public void shutdown() {
+        this.isAlive = false;
+    }
+
     @Override
     public String toString() {
         return this.getClass().getName() + (this.isAlive ? " { [running] }" : " { [shutdown] }");

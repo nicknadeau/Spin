@@ -50,6 +50,7 @@ def __validate_suite_internal(gen_file_path, db_connection, suite_id):
 
     package_name = None
     curr_class_name = None
+    found_at_least_one_test = False
     class_to_verify = {}
 
     with open(gen_file_path) as gen_file:
@@ -65,15 +66,19 @@ def __validate_suite_internal(gen_file_path, db_connection, suite_id):
                 test_name = gen_file_rep.get_test_name(stripped_line)
                 test_behaviour = gen_file_rep.get_test_behaviour(stripped_line)
 
+                if not found_at_least_one_test and test_name is not None:
+                    found_at_least_one_test = True
+
                 # If this is our first pass we set the package name, class name and this test's information.
                 if curr_class_name is None:
                     curr_class_name = class_name
                     class_to_verify["package_name"] = package_name
                     class_to_verify["class_name"] = class_name
-                    class_to_verify["tests"] = {test_name: test_behaviour}
+                    class_to_verify["tests"] = {} if test_name is None else {test_name: test_behaviour}
 
                 if curr_class_name == class_name:
-                    class_to_verify["tests"][test_name] = test_behaviour
+                    if test_name is not None:
+                        class_to_verify["tests"][test_name] = test_behaviour
                 else:
                     # Then we have moved on to the next class, time to validate the current class first.
                     __validate_class(db_connection, suite_id, class_to_verify)
@@ -83,13 +88,14 @@ def __validate_suite_internal(gen_file_path, db_connection, suite_id):
                     class_to_verify.clear()
                     class_to_verify["package_name"] = package_name
                     class_to_verify["class_name"] = curr_class_name
-                    class_to_verify["tests"] = {test_name: test_behaviour}
+                    class_to_verify["tests"] = {} if test_name is None else {test_name: test_behaviour}
 
     # We still have to validate the last class we looked at.
     __validate_class(db_connection, suite_id, class_to_verify)
 
     # Finally, we validate that the data in the suite is derivative of the data in all its classes.
-    __validate_suite(db_connection, suite_id)
+    if found_at_least_one_test:
+        __validate_suite(db_connection, suite_id)
 
 
 def __validate_class(db_connection, suite_id, class_to_verify):
@@ -104,20 +110,21 @@ def __validate_class(db_connection, suite_id, class_to_verify):
     """
     cursor = db_connection.cursor()
     try:
-        fully_qualified_class_name = "{}.{}".format(class_to_verify["package_name"], class_to_verify["class_name"])
+        if len(class_to_verify["tests"]) > 0:
+            fully_qualified_class_name = "{}.{}".format(class_to_verify["package_name"], class_to_verify["class_name"])
 
-        class_query = "SELECT id, name, num_tests, num_success, num_failures, duration FROM test_class " \
-                      + "WHERE name='{}' AND suite={}".format(fully_qualified_class_name, suite_id)
-        cursor.execute(class_query)
-        if cursor.rowcount != 1:
-            raise AssertionError("Expected to find exactly 1 class entry but found {}".format(cursor.rowcount))
-        class_db_entry = cursor.fetchone()
+            class_query = "SELECT id, name, num_tests, num_success, num_failures, duration FROM test_class " \
+                          + "WHERE name='{}' AND suite={}".format(fully_qualified_class_name, suite_id)
+            cursor.execute(class_query)
+            if cursor.rowcount != 1:
+                raise AssertionError("Expected to find exactly 1 class entry but found {}".format(cursor.rowcount))
+            class_db_entry = cursor.fetchone()
 
-        test_query = "SELECT name, is_success, stdout, stderr, duration FROM test WHERE class={}".format(class_db_entry[0])
-        cursor.execute(test_query)
-        test_db_entries = cursor.fetchall()
+            test_query = "SELECT name, is_success, stdout, stderr, duration FROM test WHERE class={}".format(class_db_entry[0])
+            cursor.execute(test_query)
+            test_db_entries = cursor.fetchall()
 
-        behaviour_verifier.validate_class(class_db_entry, test_db_entries, class_to_verify)
+            behaviour_verifier.validate_class(class_db_entry, test_db_entries, class_to_verify)
 
     finally:
         cursor.close()

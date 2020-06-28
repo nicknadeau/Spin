@@ -38,6 +38,7 @@ public final class LifecycleObjectHolder {
     private List<TestExecutor> testExecutors = null;
     private TestSuiteRunner testSuiteRunner = null;
     private List<Thread> executorThreads = null;
+    private ResultOutputter resultOutputter = null;
     private Thread outputterThread = null;
     private Thread suiteRunnerThread = null;
 
@@ -100,15 +101,15 @@ public final class LifecycleObjectHolder {
         this.testResultQueues = createTestResultQueues(this.numExecutorThreads);
 
         this.testExecutors = createExecutors(this.testInfoQueues, this.testResultQueues);
-        ResultOutputter resultOutputter = (this.writeToDb)
+        this.resultOutputter = (this.writeToDb)
                 ? ResultOutputter.outputterToConsoleAndDb(this.shutdownMonitor, lifecycleListener, this.testResultQueues, databaseConnectionProvider.getConnection())
                 : ResultOutputter.outputter(this.shutdownMonitor, lifecycleListener, this.testResultQueues);
         this.testSuiteRunner = (this.writeToDb)
-                ? TestSuiteRunner.withDatabaseWriter(this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues, databaseConnectionProvider.getConnection())
-                : TestSuiteRunner.withOutgoingQueue(this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues);
+                ? TestSuiteRunner.withDatabaseWriter(lifecycleListener, this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues, databaseConnectionProvider.getConnection())
+                : TestSuiteRunner.withOutgoingQueue(lifecycleListener, this.shutdownMonitor, this.testSuiteQueue, this.testInfoQueues);
 
         this.executorThreads = createExecutorThreads(this.testExecutors);
-        this.outputterThread = new Thread(resultOutputter, "ResultOutputter");
+        this.outputterThread = new Thread(this.resultOutputter, "ResultOutputter");
         this.suiteRunnerThread = new Thread(this.testSuiteRunner, "TestSuiteRunner");
         LOGGER.log("All life-cycle objects created.");
 
@@ -144,6 +145,12 @@ public final class LifecycleObjectHolder {
             LOGGER.log("All executor threads shut down. Shutting down suite runner...");
             this.testSuiteRunner.shutdown();
             LOGGER.log("Suite runner thread shut down.");
+            if (this.resultOutputter.isAlive()) {
+                LOGGER.log("Shutting down result outputter...");
+                this.resultOutputter.shutdown();
+                this.outputterThread.interrupt();
+                LOGGER.log("Result outputter shut down.");
+            }
         }
         this.state = State.OBJECTS_SHUTDOWN;
     }

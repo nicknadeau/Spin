@@ -98,18 +98,26 @@ def __read_class_header_info(gen_file_path):
                 class_name = gen_file_rep.get_class_name(stripped_line)
                 behaviour = gen_file_rep.get_test_behaviour(stripped_line)
                 fully_qualified_class_name = "{}.{}".format(curr_package, class_name)
-
-                if fully_qualified_class_name not in header_info:
-                    header_info[fully_qualified_class_name] = {
-                        "imports": behaviour.imports,
-                        "fields": behaviour.fields,
-                        "source-objects": behaviour.source_objects
-                    }
+                if behaviour is not None:
+                    if fully_qualified_class_name not in header_info:
+                        header_info[fully_qualified_class_name] = {
+                            "imports": behaviour.imports,
+                            "fields": behaviour.fields,
+                            "source-objects": behaviour.source_objects
+                        }
+                    else:
+                        class_header_info = header_info[fully_qualified_class_name]
+                        class_header_info["imports"] = class_header_info["imports"] | behaviour.imports
+                        class_header_info["fields"] = class_header_info["fields"] | behaviour.fields
+                        class_header_info["source-objects"] = class_header_info["source-objects"] | behaviour.source_objects
                 else:
-                    class_header_info = header_info[fully_qualified_class_name]
-                    class_header_info["imports"] = class_header_info["imports"] | behaviour.imports
-                    class_header_info["fields"] = class_header_info["fields"] | behaviour.fields
-                    class_header_info["source-objects"] = class_header_info["source-objects"] | behaviour.source_objects
+                    # No behaviour defined => no test defined for this class.
+                    if fully_qualified_class_name not in header_info:
+                        header_info[fully_qualified_class_name] = {
+                            "imports": set(),
+                            "fields": set(),
+                            "source-objects": set()
+                        }
     return header_info
 
 
@@ -217,11 +225,12 @@ def __write_test(java_file, test_name, behaviour):
     :type test_name: str
     :type behaviour: Behaviour
     """
-    java_file.write("\n\n\t@Test")
-    java_file.write("\n\tpublic void {}() {}{{".format(test_name, "throws Exception " if behaviour.throws else ""))
-    for test_content in behaviour.content:
-        java_file.write("\n\t\t{}".format(test_content))
-    java_file.write("\n\t}")
+    if test_name is not None:
+        java_file.write("\n\n\t@Test")
+        java_file.write("\n\tpublic void {}() {}{{".format(test_name, "throws Exception " if behaviour.throws else ""))
+        for test_content in behaviour.content:
+            java_file.write("\n\t\t{}".format(test_content))
+        java_file.write("\n\t}")
 
 
 def __write_footer(java_file):

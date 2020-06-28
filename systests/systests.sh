@@ -45,8 +45,9 @@ fi
 one='test_multi_class_single_test test_multi_class_multi_test test_multi_package_single_test test_multi_package_multi_test '
 two='test_some_failures test_all_failures test_writes_to_stdout test_writes_to_stderr test_single_class_single_test '
 three='test_single_class_multi_test test_single_class_single_test_failure test_single_class_multi_test_all_fail '
-four='test_single_class_multi_test_some_fail'
-tests="$one$two$three$four"
+four='test_single_class_multi_test_some_fail test_single_class_zero_tests test_multi_class_some_empty test_multi_class_zero_tests '
+five='test_zero_test_classes'
+tests="$one$two$three$four$five"
 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # >>>>>>>>>>>>>>>>>>>  Section 3  <<<<<<<<<<<<<<<<<<<<
@@ -543,6 +544,114 @@ function test_single_class_multi_test_some_fail() {
         fi
 
         validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_single_class_zero_tests() {
+        num_tests=$((num_tests + 1))
+        name='test_single_class_zero_tests'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 1 0 '[]' && \
+        generate_test_dir_only_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_multi_class_zero_tests() {
+        num_tests=$((num_tests + 1))
+        name='test_multi_class_zero_tests'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 3 0 '[]' && \
+        generate_test_dir_only_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_multi_class_some_empty() {
+        num_tests=$((num_tests + 1))
+        name='test_multi_class_some_empty'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 3 4 '[0]' && \
+	eval $autogen_cmd --gen_file -append_classes $gen_file a 5 0 '[]'
+        generate_test_dir_only_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_zero_test_classes() {
+        num_tests=$((num_tests + 1))
+        name='test_zero_test_classes'
+        echo "[$filename]: Running test $name"
+	
+	# We don't have anything to generate here, instead we just create the empty test dir.
+	# This also means we do not verify. What we are testing here is that Spin exits normally.
+	mkdir build
+	mkdir "build/$name"
+	mkdir "build/$name/test"
+	run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"

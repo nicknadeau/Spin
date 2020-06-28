@@ -22,6 +22,7 @@ public final class TestSuiteDetails {
             throw new IllegalStateException("Cannot set testClass test count: count has already been set for this class.");
         }
         this.numTestsPerClass.put(testClass, num);
+        this.numClassesFinished += (num == 0 ? 1 : 0);
     }
 
     public synchronized int getNumTestsInClass(Class<?> testClass) {

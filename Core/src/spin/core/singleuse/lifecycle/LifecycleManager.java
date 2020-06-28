@@ -97,6 +97,9 @@ public final class LifecycleManager implements Runnable, ShutdownListener, Lifec
     /**
      * Invoked by the final component in the system when it is complete its job, signifying that the whole system is
      * done and can be shutdown.
+     *
+     * Alternatively, this may be invoked by the initial component in the system if it detects that there are zero tests
+     * to run.
      */
     @Override
     public void notifyDone() {

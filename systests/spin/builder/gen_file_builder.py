@@ -262,8 +262,13 @@ def __write_new_class_bundle(gen_file, use_newline, package_name, start_class_in
     """
     gen_file.write("{}{}".format("\n" if use_newline else "", gen_file_rep.construct_package_description(package_name)))
     for i in range(start_class_index, end_class_index):
-        for j in range(num_tests):
-            gen_file.write("\n{}".format(gen_file_rep.construct_test_description(i, j, behaviours)))
+        if num_tests == 0:
+            gen_file.write("\n{}".format(gen_file_rep.construct_test_description(i, -1, None)))
+        elif num_tests > 0:
+            for j in range(num_tests):
+                gen_file.write("\n{}".format(gen_file_rep.construct_test_description(i, j, behaviours)))
+        else:
+            raise AssertionError("Cannot construct gen file with class with negative num tests.")
 
 
 def __write_bundle(gen_file, start_class_index, end_class_index, num_tests, behaviours):
@@ -283,8 +288,13 @@ def __write_bundle(gen_file, start_class_index, end_class_index, num_tests, beha
     :return: None
     """
     for i in range(start_class_index, end_class_index):
-        for j in range(num_tests):
-            gen_file.write("\n{}".format(gen_file_rep.construct_test_description(i, j, behaviours)))
+        if num_tests == 0:
+            gen_file.write("\n{}".format(gen_file_rep.construct_test_description(i, -1, None)))
+        elif num_tests > 0:
+            for j in range(num_tests):
+                gen_file.write("\n{}".format(gen_file_rep.construct_test_description(i, j, behaviours)))
+        else:
+            raise AssertionError("Cannot construct gen file with class with negative num tests.")
 
 
 def __write_tests(gen_file, class_index, start_test_index, end_test_index, behaviours):
@@ -304,5 +314,10 @@ def __write_tests(gen_file, class_index, start_test_index, end_test_index, behav
     :type behaviours: list[int]
     :return: None
     """
-    for i in range(start_test_index, end_test_index):
-        gen_file.write("\n{}".format(gen_file_rep.construct_test_description(class_index, i, behaviours)))
+    if end_test_index - start_test_index == 0:
+        gen_file.write("\n{}".format(gen_file_rep.construct_test_description(class_index, -1, None)))
+    elif end_test_index - start_test_index > 0:
+        for i in range(start_test_index, end_test_index):
+            gen_file.write("\n{}".format(gen_file_rep.construct_test_description(class_index, i, behaviours)))
+    else:
+        raise AssertionError("Cannot construct gen file: test end index {} precedes start index {}.".format(end_test_index, start_test_index))

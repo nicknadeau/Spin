@@ -1,6 +1,7 @@
 package spin.core.singleuse.runner;
 
 import spin.core.singleuse.execution.TestInfo;
+import spin.core.singleuse.lifecycle.LifecycleListener;
 import spin.core.singleuse.lifecycle.ShutdownMonitor;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
@@ -21,12 +22,16 @@ public final class TestSuiteRunner implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestSuiteRunner.class);
     private final Object monitor = new Object();
     private final ShutdownMonitor shutdownMonitor;
+    private final LifecycleListener lifecycleListener;
     private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
     private final CloseableBlockingQueue<TestSuite> incomingSuiteQueue;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
 
-    private TestSuiteRunner(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    private TestSuiteRunner(LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+        if (listener == null) {
+            throw new NullPointerException("listener must be non-null.");
+        }
         if (shutdownMonitor == null) {
             throw new NullPointerException("shutdownMonitor must be non-null.");
         }
@@ -36,6 +41,7 @@ public final class TestSuiteRunner implements Runnable {
         if (outgoingTestQueues == null) {
             throw new NullPointerException("outgoingTestQueues must be non-null.");
         }
+        this.lifecycleListener = listener;
         this.shutdownMonitor = shutdownMonitor;
         this.incomingSuiteQueue = incomingSuiteQueue;
         this.outgoingTestQueues = outgoingTestQueues;
@@ -46,13 +52,14 @@ public final class TestSuiteRunner implements Runnable {
      * Constructs a new suite runner that will put all of the tests it receives into the given queues. It will attempt
      * to add tests to these queues fairly so that they each receive a roughly equal load.
      *
+     * @param listener The life-cycle listener.
      * @param shutdownMonitor The shutdown monitor.
      * @param incomingSuiteQueue The queue in which test suites are loaded into.
      * @param outgoingTestQueues The queues to load the tests into.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withOutgoingQueue(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
-        return new TestSuiteRunner(shutdownMonitor, incomingSuiteQueue, outgoingTestQueues, null);
+    public static TestSuiteRunner withOutgoingQueue(LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+        return new TestSuiteRunner(listener, shutdownMonitor, incomingSuiteQueue, outgoingTestQueues, null);
     }
 
     /**
@@ -62,17 +69,18 @@ public final class TestSuiteRunner implements Runnable {
      * This test suite will writer all of the tests, test classes and suites it receives into a database using the given
      * database writer.
      *
+     * @param listener The life-cycle listener.
      * @param shutdownMonitor The shutdown monitor.
      * @param incomingSuiteQueue The queue in which test suites are loaded into.
      * @param outgoingTestQueues The queues to load the tests into.
      * @param dbConnection The database connection.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withDatabaseWriter(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    public static TestSuiteRunner withDatabaseWriter(LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
         if (dbConnection == null) {
             throw new NullPointerException("dbConnection must be non-null.");
         }
-        return new TestSuiteRunner(shutdownMonitor, incomingSuiteQueue, outgoingTestQueues, dbConnection);
+        return new TestSuiteRunner(listener, shutdownMonitor, incomingSuiteQueue, outgoingTestQueues, dbConnection);
     }
 
     @Override
@@ -143,25 +151,32 @@ public final class TestSuiteRunner implements Runnable {
                         writeToDatabase(classToTestInfoMap, allTestInfos, suiteDbId);
 
                         // Execute each of the declared test methods.
-                        int index = 0;
-                        while (index < allTestInfos.size()) {
-                            if (!this.isAlive) {
-                                break;
-                            }
-
-                            for (CloseableBlockingQueue<TestInfo> outgoingTestQueue : this.outgoingTestQueues) {
+                        if (allTestInfos.isEmpty()) {
+                            // If we had zero tests to submit then our downstream consumers will never receive anything
+                            // and wait forever. In this case, we notify the lifecycle listener that we are done.
+                            LOGGER.log("Notifying listener suite is done due to it having zero tests.");
+                            this.lifecycleListener.notifyDone();
+                        } else {
+                            int index = 0;
+                            while (index < allTestInfos.size()) {
                                 if (!this.isAlive) {
                                     break;
                                 }
 
-                                LOGGER.log("Attempting to submit test #" + (index + 1) + " of " + allTestInfos.size());
-                                if (outgoingTestQueue.add(allTestInfos.get(index), 15, TimeUnit.SECONDS)) {
-                                    LOGGER.log("Submitted test #" + (index + 1));
-                                    index++;
-                                }
+                                for (CloseableBlockingQueue<TestInfo> outgoingTestQueue : this.outgoingTestQueues) {
+                                    if (!this.isAlive) {
+                                        break;
+                                    }
 
-                                if (index >= allTestInfos.size()) {
-                                    break;
+                                    LOGGER.log("Attempting to submit test #" + (index + 1) + " of " + allTestInfos.size());
+                                    if (outgoingTestQueue.add(allTestInfos.get(index), 15, TimeUnit.SECONDS)) {
+                                        LOGGER.log("Submitted test #" + (index + 1));
+                                        index++;
+                                    }
+
+                                    if (index >= allTestInfos.size()) {
+                                        break;
+                                    }
                                 }
                             }
                         }

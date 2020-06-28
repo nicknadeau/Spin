@@ -16,7 +16,10 @@ def construct_test_description(class_index, test_index, behaviours):
     :type behaviours: list[int]
     :return:type: str
     """
-    return "{}C{}|t{}|{}".format(get_start_of_test_desc(), class_index, test_index, behaviours)
+    if test_index == -1:
+        return "{}C{}||".format(get_start_of_test_desc(), class_index)
+    else:
+        return "{}C{}|t{}|{}".format(get_start_of_test_desc(), class_index, test_index, behaviours)
 
 
 def construct_package_description(package_name):
@@ -106,7 +109,11 @@ def get_test_index(test_description):
     :type test_description: str
     :return:type: int
     """
-    return int(__split_test_desc(test_description)[1][1:])
+    test_name = __split_test_desc(test_description)[1]
+    if len(test_name) == 0:
+        return -1
+    else:
+        return int(test_name[1:])
 
 
 def get_package_name(package_description):
@@ -135,28 +142,34 @@ def get_class_name(test_description):
 
 def get_test_name(test_description):
     """
-        Returns the name of the test in the given gen file test description.
+        Returns the name of the test in the given gen file test description or None if no test is defined for the class.
 
         :param test_description: the test description.
-        :return: the test name.
+        :return: the test name or None if no test is defined for the class.
         :type test_description: str
         :return:type: str
         """
-    return __split_test_desc(test_description)[1]
+    test_name = __split_test_desc(test_description)[1]
+    return None if len(test_name) == 0 else test_name
 
 
 def get_test_behaviour(test_description):
     """
-    Returns the behaviour to be applied to the test in the given gen file test description.
+    Returns the behaviour to be applied to the test in the given gen file test description or None if no test is defined
+    for the class.
 
     :param test_description: the test description.
-    :return: the behaviour.
+    :return: the behaviour or None if no test is defined for the class.
     :type test_description: str
     :return:type: Behaviour
     """
     split_desc = __split_test_desc(test_description)
-    behaviour_codes = ast.literal_eval(split_desc[2])
-    return behaviour_helper.create_behaviour_from_codes(behaviour_codes, split_desc[0], split_desc[1])
+    behaviour_desc = split_desc[2]
+    if len(behaviour_desc) == 0:
+        return None
+    else:
+        behaviour_codes = ast.literal_eval(behaviour_desc)
+        return behaviour_helper.create_behaviour_from_codes(behaviour_codes, split_desc[0], split_desc[1])
 
 
 def __split_test_desc(test_description):
