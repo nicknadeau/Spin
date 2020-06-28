@@ -124,6 +124,11 @@ def validate_class(class_db_entry, test_db_entries, class_to_verify):
                 count = int(count_string if end_index == -1 else count_string[:end_index])
                 if count != num_ticks:
                     raise AssertionError("Expected num ticks {} for behaviour {}".format(num_ticks, code))
+            elif code == 14:
+                is_success = int(test_db_entry[1])
+                if is_success != 0:
+                    raise AssertionError("Expected failure for behaviour code {}".format(code))
+                failed = True
 
         # Increment num success/failure depending on this test's outcome.
         if not failed:

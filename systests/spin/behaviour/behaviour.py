@@ -94,6 +94,15 @@ class Behaviour:
             self.fields = {"private final Ticker ticker = new Ticker();"}
             self.imports = {"s.a.Ticker;"}
             self.desc = "stderr-get-ticks"
+        elif code == 14:
+            # This is a weird code... basically we setup a test that requires a src object dependency and the caller
+            # (by specifying this code) tells us they will omit declaring the dependency, which will cause the test to
+            # fail.
+            self.source_objects = {"s.a.Ticker"}
+            self.content = ["this.ticker.tick();"]
+            self.fields = {"private final Ticker ticker = new Ticker();"}
+            self.imports = {"s.a.Ticker;"}
+            self.desc = "missing-dependency"
 
     def __str__(self):
         return "Behaviour({})".format(self.desc)
