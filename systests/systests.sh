@@ -43,8 +43,10 @@ fi
 
 # This is a space-separated list of test/function names that will be run by this script.
 one='test_multi_class_single_test test_multi_class_multi_test test_multi_package_single_test test_multi_package_multi_test '
-two='test_some_failures test_all_failures test_writes_to_stdout test_writes_to_stderr'
-tests="$one$two"
+two='test_some_failures test_all_failures test_writes_to_stdout test_writes_to_stderr test_single_class_single_test '
+three='test_single_class_multi_test test_single_class_single_test_failure test_single_class_multi_test_all_fail '
+four='test_single_class_multi_test_some_fail'
+tests="$one$two$three$four"
 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # >>>>>>>>>>>>>>>>>>>  Section 3  <<<<<<<<<<<<<<<<<<<<
@@ -380,6 +382,152 @@ function test_writes_to_stderr() {
         echo "[$filename]: Running test $name"
         # We increment some counters and print to stdout with codes 8 & 10. Code 4 is a basic stdout print.
         eval $autogen_cmd --gen_file -new . a 4 3 '[4,5,6,8,6,5,8,10]' && \
+        generate_test_dir_only_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_single_class_single_test() {
+        num_tests=$((num_tests + 1))
+        name='test_single_class_single_test'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 1 1 '[0]' && \
+        generate_test_dir_only_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_single_class_multi_test() {
+        num_tests=$((num_tests + 1))
+        name='test_single_class_multi_test'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 1 7 '[3]' && \
+        generate_test_dir_only_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_single_class_single_test_failure() {
+        num_tests=$((num_tests + 1))
+        name='test_single_class_single_test_failure'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 1 1 '[2]' && \
+        generate_test_dir_only_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_single_class_multi_test_all_fail() {
+        num_tests=$((num_tests + 1))
+        name='test_single_class_multi_test_all_fail'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 1 4 '[2]' && \
+        generate_test_dir_only_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_single_class_multi_test_some_fail() {
+        num_tests=$((num_tests + 1))
+        name='test_single_class_multi_test_some_fail'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 1 3 '[0]' && \
+	eval $autogen_cmd --gen_file -append_tests $gen_file a 0 3 '[2]' && \
         generate_test_dir_only_project "$name"
         if [ "$?" -ne 0 ]
         then

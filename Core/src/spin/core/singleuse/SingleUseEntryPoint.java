@@ -33,8 +33,8 @@ public final class SingleUseEntryPoint {
      *
      * args at index 0: TEST-BASE
      * args at index 1: N
-     * args at indices [2..2+N]: each of the N test classes
-     * args at indices [2+N+1..2+N+M]: each of the M dependencies
+     * args at indices [2..2+N-1]: each of the N test classes
+     * args at indices [2+N..2+N+M-1]: each of the M dependencies
      */
     public static void main(String[] args) {
         ShutdownMonitor shutdownMonitor = null;
@@ -105,11 +105,14 @@ public final class SingleUseEntryPoint {
             int numDependencies = args.length - 2 - numTestClasses;
             LOGGER.log("Number of given dependencies: " + numDependencies);
 
+            // Plus 1 dependency because we also add the base test dir as a dependency (there may be non-test helper
+            // classes defined in the test directory after all).
             URL[] dependencyUrls = new URL[numDependencies + 1];
-            dependencyUrls[0] = new File(testsBaseDir).toURI().toURL();
-            for (int i = 1; i < 1 + numDependencies; i++) {
-                dependencyUrls[i] = new File(args[2 + numDependencies + i - 1]).toURI().toURL();
+            for (int i = 0; i < numDependencies; i++) {
+                dependencyUrls[i] = new File(args[2 + numTestClasses + i]).toURI().toURL();
             }
+            dependencyUrls[numDependencies] = new File(testsBaseDir).toURI().toURL();
+
             URLClassLoader classLoader = new URLClassLoader(dependencyUrls);
             String[] testClassPaths = Arrays.copyOfRange(args, 2, 2 + numTestClasses);
 
