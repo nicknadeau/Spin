@@ -46,7 +46,7 @@ one='test_multi_class_single_test test_multi_class_multi_test test_multi_package
 two='test_some_failures test_all_failures test_writes_to_stdout test_writes_to_stderr test_single_class_single_test '
 three='test_single_class_multi_test test_single_class_single_test_failure test_single_class_multi_test_all_fail '
 four='test_single_class_multi_test_some_fail test_single_class_zero_tests test_multi_class_some_empty test_multi_class_zero_tests '
-five='test_zero_test_classes'
+five='test_zero_test_classes test_project_with_src_files test_some_fail_out_err_empty_src'
 tests="$one$two$three$four$five"
 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -135,6 +135,20 @@ function generate_test_dir_only_project() {
 	eval $autogen_cmd --generate $gen_file "$1" && \
 	ant -Dproject_name="$1" build_tests &> $curr_dir/$log
 	rm -rf "$1"
+}
+
+# Generates a project from a gen file. Assumption: project contains both test & source files.
+# args:: <name>
+# name: the name of the project to generate
+function generate_test_and_src_project() {
+        if [ "$#" -ne 1 ]
+        then
+                echo "[$filename]: USAGE:: generate_project <name>"
+                return 1
+        fi
+        eval $autogen_cmd --generate $gen_file "$1" && \
+        ant -Dproject_name="$1" build_tests_and_src &> $curr_dir/$log
+        rm -rf "$1"
 }
 
 # Args:: <test dir> <class matcher> <name> [<dependency>...]
@@ -659,6 +673,69 @@ function test_zero_test_classes() {
         else
                 print_validate_fail_msg "$name"
         fi
+}
+
+function test_project_with_src_files() {
+        num_tests=$((num_tests + 1))
+        name='test_project_with_src_files'
+        echo "[$filename]: Running test $name"
+        eval $autogen_cmd --gen_file -new . a 6 4 '[11,12,13]' && \
+        generate_test_and_src_project "$name"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "$name"
+                return 1
+        fi
+
+        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "build/$name/src"  "$junit_jar" "$hamcrest_jar"
+        if [ "$?" -ne 0 ]
+        then
+                print_spin_fail_msg "$name"
+                return 1
+        fi
+
+        validate_results 0
+        if [ "$?" -eq 0 ]
+        then
+                print_success_msg "$name"
+                num_success=$((num_success + 1))
+        else
+                print_validate_fail_msg "$name"
+        fi
+}
+
+function test_some_fail_out_err_empty_src() {
+	num_tests=$((num_tests + 1))
+	name='test_some_fail_out_err_empty_src'
+	echo "[$filename]: Running test $name"
+	eval $autogen_cmd --gen_file -new . a 2 3 '[0]' && \
+	eval $autogen_cmd --gen_file -append_classes $gen_file a 4 1 '[2]' && \
+	eval $autogen_cmd --gen_file -append_classes $gen_file b 3 2 '[3,5,6,7,9]' && \
+	eval $autogen_cmd --gen_file -append_classes $gen_file b 3 2 '[4,5,6,8,10]' && \
+	eval $autogen_cmd --gen_file -append_classes $gen_file c 4 3 '[11,12,13]' && \
+	eval $autogen_cmd --gen_file -append_classes $gen_file c 4 0 '[]' && \
+	generate_test_and_src_project "$name"
+	if [ "$?" -ne 0 ]
+	then
+		print_gen_fail_msg "$name"
+		return 1
+	fi
+
+	run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "build/$name/src" "$junit_jar" "$hamcrest_jar"
+	if [ "$?" -ne 0 ]
+	then
+		print_spin_fail_msg "$name"
+		return 1
+	fi
+
+	validate_results 0
+	if [ "$?" -eq 0 ]
+	then
+		print_success_msg "$name"
+		num_success=$((num_success + 1))
+	else
+		print_validate_fail_msg "$name"
+	fi
 }
 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
