@@ -4,23 +4,33 @@ A library for running unit tests concurrently in Java.
 
 ## Build
 
-Run the following command to build the single-use jar.
+#### Requirements:
+- JDK 11
+- Ant 1.10
+- Ubuntu 16.04
 
-This jar is the Spin program that runs all of the tests in a single test suite and then exits. It is not long-lived. 
+Currently, the only way the project can be built is as a so-called "single-use" project. That is, Spin is started up and given some tests to run and once it completes running them the program exits. It is not a long-lived process.
+
+The single-use program can be built as a jar file using the following command:
  
-```shell
+```shell script
 ant build-singleuse
 ```
 
-The client used to interact with this single-use jar is the `client/spin-singleuse` file.
+The client used to interact with this single-use jar is a simple shell script named `spin-singleuse`, which can be found in the `client` directory.
 
-## Running The Examples
+## Running The Example
 
-An example module is provided that simulates a project with some tests to be run. 
+#### Requirements:
+- JDK 11
+- Ant 1.10
+- Ubuntu 16.04
+
+An example module is provided that simulates a project with some tests to be run.
 
 To run the tests on the single-use version of Spin run the following commands:
 
-```shell
+```shell script
 cd demo/
 ./example-singleuse.sh
 cd example/
@@ -31,7 +41,23 @@ The above command will run Spin using 4 threads. It will run all of the tests wh
 
 To clean up when finished run:
 
-```shell
+```shell script
 cd ../..
 ant clean
+```
+
+## Running The Tests
+
+#### Requirements:
+- JDK 11
+- Ant 1.10
+- Python 3.5
+- PostgresQL 9.5
+- Ubuntu 16.04
+
+Currently, the only tests on Spin are end-to-end or system tests located in the `systests` directory. To run them:
+
+```shell script
+cd systests
+./systests.sh --run -c
 ```
