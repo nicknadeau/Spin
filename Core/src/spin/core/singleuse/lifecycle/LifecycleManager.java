@@ -13,7 +13,7 @@ import java.io.IOException;
  */
 public final class LifecycleManager implements Runnable, ShutdownListener, LifecycleListener {
     private static final Logger LOGGER = Logger.forClass(LifecycleManager.class);
-    private static final int SYSTEM_CAPACITY = 100;
+    private static final int SYSTEM_CAPACITY = 100_000;
     private final Object monitor = new Object();
     private final CloseableBlockingQueue<TestSuite> testSuiteQueue = CloseableBlockingQueue.withCapacity(1);
     private final ShutdownMonitor shutdownMonitor;
