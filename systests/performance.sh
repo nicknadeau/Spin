@@ -19,6 +19,8 @@ function print_help () {
 	echo -e "\taction:"
 	echo -e "\t--speed: runs the Spin speed performance tests. Outputs time as seconds and milliseconds for a project"
 	echo -e "\t\tdefined as K=(N x M), where K is num tests, N is num test classes, M is num tests per class."
+	echo -e "\t--memory: runs the Spin memory performance tests. Outputs each magnitude alongside the max heap size used"
+	echo -e "\t\tdefined in the same K=(N x M) format as for speed tests."
 }
 
 function clean_for_run() {
@@ -95,7 +97,7 @@ function speed_test() {
 	generate_test_dir_only_project "speed_perf"
 	if [ "$?" -ne 0 ]
 	then
-		print_gen_fail_msg "$name"
+		print_gen_fail_msg "speed_test $1 x $2"
 		return 1
 	fi
 
@@ -110,6 +112,35 @@ function speed_test() {
 	num_classes="$1"
 	tests_per_class="$2"
 	echo -e "Total time $((num_classes * tests_per_class))=($1 x $2): $num_seconds sec. $num_milliseconds millis."
+}
+
+function memory_test() {
+	if [ "$#" -ne 3 ]
+        then
+                echo "[$filename]: USAGE:: memory_test <max heap size> <num classes> <num tests per class>"
+                return 1
+        fi
+	
+	eval $autogen_cmd --gen_file -new . a "$2" "$3" '[0]' && \
+        generate_test_dir_only_project "mem_perf"
+        if [ "$?" -ne 0 ]
+        then
+                print_gen_fail_msg "memory_test $2 x $3"
+                return 1
+        fi
+
+        eval $spin_cmd -h "$1" 4 'build/mem_perf/test' '.class' "$spin_log_dir/mem_perf" "$junit_jar" "$hamcrest_jar" &> /dev/null
+	if [ $? -eq 0 ]
+	then
+		report='SUCCESS'
+	else
+		report='FAILED'
+		rm *.hprof
+	fi
+
+        num_classes="$2"
+        tests_per_class="$3"
+        echo -e "Total time $((num_classes * tests_per_class))=($2 x $3): $report"
 }
 
 if [ "$#" -ne 1 ]
@@ -137,6 +168,33 @@ else
 
 		clean
 		echo '============== Performance (Speed: Complete) =============='
+	elif [ "$1" == '--memory' ]
+	then
+		echo '============== Performance (Memory: Begin) =============='
+                setup
+
+                for magnitude in $magnitudes
+                do
+                        if [ "$magnitude" -eq 1 ]
+                        then
+                                memory_test '4M' $magnitude 1
+                                clean_for_run
+			elif [ "$magnitude" -eq 10000 ]
+			then
+				memory_test '32M' $magnitude 1
+                                clean_for_run
+                                memory_test '16M' 1 $magnitude
+                                clean_for_run
+			else
+				memory_test '4M' $magnitude 1
+				clean_for_run
+				memory_test '4M' 1 $magnitude
+				clean_for_run
+                        fi
+                done
+
+                clean
+                echo '============== Performance (Memory: Complete) =============='
 	else
 		print_help
 	fi

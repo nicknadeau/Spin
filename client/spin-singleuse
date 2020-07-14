@@ -1,13 +1,32 @@
 #!/bin/bash
 
 help () {
-	echo 'USAGE: spin [-v] [-p] <num threads> <built-tests-dir> <matcher> [dependencies]...'
+	echo 'USAGE: spin [-v] [-p] [-h <max heap size>] <num threads> <built-tests-dir> <matcher> [dependencies]...'
 	echo -e "\t"'-v [OPTIONAL]: if present this flag specifies to run in verbose logging mode.'
 	echo -e "\t"'-p [OPTIONAL]: if present this flag specifies to persist the test results in a database.'
+	echo -e "\t"'-h <max heap size> [OPTIONAL]: if present this flag specifies the max heap size to use (eg. 64M)'
 	echo -e "\t"'num threads: the number of threads to use to run the tests with.'
 	echo -e "\t"'built-tests-dir: a directory that contains all of the built .class test files to be run.'
 	echo -e "\t"'matcher: the pattern to match Java tests against (eg: Test.java matches files ending with Test.java)'
 	echo -e "\t"'dependencies [OPTIONAL]: zero or more .class or .jar files required to run the tests.'
+}
+
+function parse () {
+	if [ "$1" == '-v' ]
+	then
+		verbose=true
+		num_optionals=$((num_optionals+1))
+	elif [ "$1" == '-p' ]
+	then
+		persist=true
+		num_optionals=$((num_optionals+1))
+	elif [ "$1" == '-h' ]
+	then
+		heap_size="$2"
+		num_optionals=$((num_optionals+2))
+	else
+		return 1
+	fi
 }
 
 # We have 2 non-optional arguments we expect so if given less we fail out.
@@ -19,28 +38,39 @@ fi
 
 # Determine which optional flags have been given.
 num_optionals=0
-if [ "$1" == '-v' ]
+verbose=false
+persist=false
+heap_size=64M
+
+if [[ "$1" =~ -. ]]
 then
-	if [ "$2" == '-p' ]
+	parse "$1" "$2"
+	if [ $? -ne 0 ]
 	then
-		verbose=true
-		persist=true
-		num_optionals=2
-	else
-		verbose=true
-		persist=false
-		num_optionals=1
-	fi
-elif [ "$1" == '-p' ]
-then
-	if [ "$2" == '-v' ]
-	then
+		echo "Failed to parse argument: $1"
 		help
 		exit 1
 	fi
-	verbose=false
-	persist=true
-	num_optionals=1
+fi
+if [[ "$2" =~ -. ]]
+then
+	parse "$2" "$3"
+	if [ $? -ne 0 ]
+        then
+		echo "Failed to parse argument: $1"
+                help
+                exit 1
+        fi
+fi
+if [[ "$3" =~ -. ]]
+then
+	parse "$3" "$4"
+	if [ $? -ne 0 ]
+        then
+		echo "Failed to parse argument: $1"
+                help
+                exit 1
+        fi
 fi
 
 # Set any system properties required by optional flags.
@@ -102,4 +132,7 @@ fi
 # Set the database config file path property here. We hardcode this. Note this is only used when -p is given.
 dbconfig_property='-Ddb_config_path=./config/db_config.txt'
 
-java "$verbose_property" "$persist_property" "$dbconfig_property" "$num_threads_property" -cp "$classpath" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$num_tests" $tests $dependencies
+# Run using the specified max heap size or our default 64MB
+# Do a heap dump if an OOM is encountered
+# If an OOM is encountered kill the process. Why? So we explicitly exit with a non-zero exit code to indicate failure.
+java -Xmx$heap_size -XX:+HeapDumpOnOutOfMemoryError -XX:OnOutOfMemoryError="kill -9 %p" "$verbose_property" "$persist_property" "$dbconfig_property" "$num_threads_property" -cp "$classpath" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$num_tests" $tests $dependencies

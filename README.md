@@ -61,3 +61,19 @@ Currently, the only tests on Spin are end-to-end or system tests located in the 
 cd systests
 ./systests.sh --run -c
 ```
+
+## System Performance
+
+#### Requirements:
+- JDK 11
+- Ant 1.10
+- Python 3.5
+- Ubuntu 16.04
+
+We have some speed and memory performance scripts. Spin is not yet intended to be optimal in either regard. We are at an early stage where writing a skeleton with some demonstrable correctness properties was the key goal of the project. These results are most just here for interest's sake and also to give us a starting point to measure against.
+
+```shell script
+cd systests
+./performance.sh --speed
+./performance.sh --memory
+```

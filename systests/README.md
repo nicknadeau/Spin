@@ -5,6 +5,7 @@ This directory contains end-to-end or system tests to be run against the Spin co
 * [1. Running The Tests](#run)
 * [2. How The System Tests Work](#how)
 * [3. The Gen File](#gen_file)
+* [4. Performance Tests](#perf)
 
 ---
 ### <a name="run">1. Running The Tests</a>
@@ -32,3 +33,14 @@ The gen file is the file that describes a test suite. This file can be construct
 To create a new gen file, or to add more description to an existent one, run `suite_autogen.py --gen_file`
 
 The representation of this file is not succinct. I didn't want to over-think it at this stage. The file is able to describe a test suite consisting of 100,000 tests in a variety of ways in less than 5MB, which is good enough. Typical tests define less than 100 tests.
+
+### <a name="perf">4. Performance Tests</a>
+There are both speed and memory performance "tests" written for Spin in the `performance.sh` script. Currently, we are not actually using the results in any sort of hard sense (ie. to detect regressions via CI). They are more there to loosely keep our eye on and notice regressions if they occur, but more importantly to provide a starting point to begin improving upon.
+
+The system was not designed with any sort of performance in mind and naturally it does quite poorly at this early stage. The speed bottleneck is the client shell script, which accounts for the overwhelming amount of run time. When we get on the order of running 10,000 tests with some fairly decent hardware it can take over a minute (these are empty tests). Likely when we get up to 10,000 tests we also see our memory begin to grow very noticeably.
+
+To run the performance tests:
+```shell script
+./performance.sh --speed
+./performance.sh --memory
+```
