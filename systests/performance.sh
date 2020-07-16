@@ -182,7 +182,7 @@ else
                                 clean_for_run
 			elif [ "$magnitude" -eq 10000 ]
 			then
-				memory_test '32M' $magnitude 1
+				memory_test '16M' $magnitude 1
                                 clean_for_run
                                 memory_test '16M' 1 $magnitude
                                 clean_for_run
