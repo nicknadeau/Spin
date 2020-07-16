@@ -26,6 +26,7 @@ spin_log_dir='spin_logs'
 log='systests.log'
 autogen_cmd='python3 spin/suite_autogen.py'
 gen_file='gen_file'
+any_class_matcher='.*\.class'
 curr_dir="$(pwd)"
 num_tests=0
 num_success=0
@@ -196,7 +197,7 @@ function test_multi_class_single_test() {
 		return 1
 	fi
 
-	run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
 	if [ "$?" -ne 0 ]
 	then
 		print_spin_fail_msg "$name"
@@ -225,7 +226,7 @@ function test_multi_class_multi_test() {
 		return 1
 	fi
 
-	run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
 	if [ "$?" -ne 0 ]
 	then
 		print_spin_fail_msg "$name"
@@ -255,7 +256,7 @@ function test_multi_package_single_test() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -285,7 +286,7 @@ function test_multi_package_multi_test() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -315,7 +316,7 @@ function test_some_failures() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -344,7 +345,7 @@ function test_all_failures() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -374,7 +375,7 @@ function test_writes_to_stdout() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -404,7 +405,7 @@ function test_writes_to_stderr() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -433,7 +434,7 @@ function test_single_class_single_test() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -462,7 +463,7 @@ function test_single_class_multi_test() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -491,7 +492,7 @@ function test_single_class_single_test_failure() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -520,7 +521,7 @@ function test_single_class_multi_test_all_fail() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -550,7 +551,7 @@ function test_single_class_multi_test_some_fail() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -579,7 +580,7 @@ function test_single_class_zero_tests() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -608,7 +609,7 @@ function test_multi_class_zero_tests() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -638,7 +639,7 @@ function test_multi_class_some_empty() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -665,7 +666,7 @@ function test_zero_test_classes() {
 	mkdir build
 	mkdir "build/$name"
 	mkdir "build/$name/test"
-	run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -687,7 +688,7 @@ function test_project_with_src_files() {
                 return 1
         fi
 
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "build/$name/src"  "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "build/$name/src"  "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
@@ -721,7 +722,7 @@ function test_some_fail_out_err_empty_src() {
 		return 1
 	fi
 
-	run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "build/$name/src" "$junit_jar" "$hamcrest_jar"
+	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "build/$name/src" "$junit_jar" "$hamcrest_jar"
 	if [ "$?" -ne 0 ]
 	then
 		print_spin_fail_msg "$name"
@@ -751,7 +752,7 @@ function test_missing_dependency() {
         fi
 
 	# We omit the src dependencies.
-        run_spin "build/$name/test" '.class' "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"

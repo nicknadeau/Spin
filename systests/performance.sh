@@ -10,6 +10,7 @@ spin_log_dir='spin_logs'
 log='systests.log'
 autogen_cmd='python3 spin/suite_autogen.py'
 gen_file='gen_file'
+any_class_matcher='.*\.class'
 curr_dir="$(pwd)"
 
 magnitudes='1 10 100 1000 10000'
@@ -102,7 +103,7 @@ function speed_test() {
 	fi
 
 	start_time="$(date +%s%N)"
-	eval $spin_cmd 4 'build/speed_perf/test' '.class' "$spin_log_dir/speed_perf" "$junit_jar" "$hamcrest_jar" &> /dev/null
+	eval $spin_cmd 4 'build/speed_perf/test' "$any_class_matcher" "$spin_log_dir/speed_perf" "$junit_jar" "$hamcrest_jar" &> /dev/null
 	end_time="$(date +%s%N)"
 
 	total_time_millis="$(((end_time - start_time) / 1000000))"
@@ -129,7 +130,7 @@ function memory_test() {
                 return 1
         fi
 
-        eval $spin_cmd -h "$1" 4 'build/mem_perf/test' '.class' "$spin_log_dir/mem_perf" "$junit_jar" "$hamcrest_jar" &> /dev/null
+        eval $spin_cmd -h "$1" 4 'build/mem_perf/test' "$any_class_matcher" "$spin_log_dir/mem_perf" "$junit_jar" "$hamcrest_jar" &> /dev/null
 	if [ $? -eq 0 ]
 	then
 		report='SUCCESS'

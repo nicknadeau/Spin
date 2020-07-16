@@ -96,23 +96,12 @@ public final class TestSuiteRunner implements Runnable {
                     if (testSuite != null) {
                         LOGGER.log("Got next test suite to load.");
 
-                        // Grab all of the submitted test classes. We want only the binary names of these classes so we can load them.
-                        String[] classes = new String[testSuite.testClassPaths.length];
-                        for (int i = 0; i < testSuite.testClassPaths.length; i++) {
-                            String classPathWithBaseDirStripped = testSuite.testClassPaths[i].substring(testSuite.testBaseDirPath.length());
-                            String classNameWithSuffixStripped = classPathWithBaseDirStripped.substring(0, classPathWithBaseDirStripped.length() - ".class".length());
-                            String classNameBinaryformat = classNameWithSuffixStripped.replaceAll("/", ".");
-
-                            LOGGER.log("Binary name of submitted test class: " + classNameBinaryformat);
-                            classes[i] = classNameBinaryformat;
-                        }
-
                         // Load all of the submitted test classes.
                         LOGGER.log("Loading all test classes as Class objects.");
                         Map<Class<?>, List<TestInfo>> classToTestInfoMap = new HashMap<>();
-                        Class<?>[] testClasses = new Class[classes.length];
-                        for (int i = 0; i < classes.length; i++) {
-                            testClasses[i] = testSuite.classLoader.loadClass(classes[i]);
+                        List<Class<?>> testClasses = new ArrayList<>();
+                        for (String className : testSuite.testClassPaths) {
+                            testClasses.add(testSuite.classLoader.loadClass(className));
                         }
 
                         TestSuiteDetails testSuiteDetails = new TestSuiteDetails();

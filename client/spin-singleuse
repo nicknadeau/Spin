@@ -103,18 +103,6 @@ fi
 num_threads_property="-Dnum_threads=$num_threads"
 test_dir="${!test_dir_index}"
 matcher="${!matcher_index}"
-match='*'"$matcher"
-num_tests=0
-
-# Grab all test files in the given test base directory. We consider a test file a file ending with Test.class.
-for file in $(find "$test_dir" -type f)
-do
-	if [[ $(realpath $file) == $match ]]
-	then
-		tests="$tests $(realpath $file)"
-		num_tests=$((num_tests+1))
-	fi
-done
 
 # Collect any given dependencies and then run the program.
 for dependency in ${@:$((matcher_index+1))}
@@ -135,4 +123,4 @@ dbconfig_property='-Ddb_config_path=./config/db_config.txt'
 # Run using the specified max heap size or our default 64MB
 # Do a heap dump if an OOM is encountered
 # If an OOM is encountered kill the process. Why? So we explicitly exit with a non-zero exit code to indicate failure.
-java -Xmx$heap_size -XX:+HeapDumpOnOutOfMemoryError -XX:OnOutOfMemoryError="kill -9 %p" "$verbose_property" "$persist_property" "$dbconfig_property" "$num_threads_property" -cp "$classpath" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$num_tests" $tests $dependencies
+java -Xmx$heap_size -XX:+HeapDumpOnOutOfMemoryError -XX:OnOutOfMemoryError="kill -9 %p" "$verbose_property" "$persist_property" "$dbconfig_property" "$num_threads_property" -cp "$classpath" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$matcher" $dependencies
