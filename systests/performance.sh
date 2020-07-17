@@ -16,12 +16,11 @@ curr_dir="$(pwd)"
 magnitudes='1 10 100 1000 10000'
 
 function print_help () {
-	echo "USAGE: $filename.sh <action>"
-	echo -e "\taction:"
-	echo -e "\t--speed: runs the Spin speed performance tests. Outputs time as seconds and milliseconds for a project"
-	echo -e "\t\tdefined as K=(N x M), where K is num tests, N is num test classes, M is num tests per class."
-	echo -e "\t--memory: runs the Spin memory performance tests. Outputs each magnitude alongside the max heap size used"
-	echo -e "\t\tdefined in the same K=(N x M) format as for speed tests."
+	echo "USAGE: $filename.sh <type> [<magnitude> | <magnitude range>] [skew]"
+	echo -e "\ttype: the type of performance test to run. May be either '--speed' or '--memory'"
+	echo -e "\tmagnitude: a positive power of ten number denoting the apx. number of JUnit tests to be run by Spin. (eg. 1, 10, 100, ...)"
+	echo -e "\tmagnitude range: two magnitudes in the format 'N:M' with no spaces, where N is less than or equal to M"
+	echo -e "\tskew: how the JUnit tests should be distributed. Either '-s' for 1 test per class, '-l' for ~magnitude tests per class. Default is both."
 }
 
 function clean_for_run() {
@@ -144,60 +143,113 @@ function memory_test() {
         echo -e "Total time $((num_classes * tests_per_class))=($2 x $3): $report"
 }
 
-if [ "$#" -ne 1 ]
+function parse_magnitude() {
+	if [ "$#" -ne 1 ]
+	then
+		echo 'USAGE: parse_magnitude [<magnitude> | <magnitude range>]'
+		return 1
+	fi
+
+	if `echo "$1" | grep -q '^10\{0,\}$'`
+	then
+		if [ "$1" -lt 1 ] || [ "$1" -gt 10000 ]
+		then
+			echo 'ERROR: magnitude must be within the range [1,10000]'
+			return 1
+		else
+			echo "$1:$1"
+		fi
+	else
+	echo 'ERROR: magnitude must be a positive power of ten (eg. 1, 10, 100, ...)'
+		return 1
+	fi
+}
+
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]
 then
 	print_help
+	exit 1
 else
-	if [ "$1" == '--speed' ]
+
+	if `echo "$2" | grep -q '^[[:digit:]]\{1,\}$'`
 	then
-		echo '============== Performance (Speed: Begin) =============='
-		setup
-
-		for magnitude in $magnitudes
-		do
-			if [ "$magnitude" -eq 1 ]
-			then
-				speed_test $magnitude 1
-				clean_for_run
-			else
-				speed_test $magnitude 1
-				clean_for_run
-				speed_test 1 $magnitude
-				clean_for_run
-			fi
-		done
-
-		clean
-		echo '============== Performance (Speed: Complete) =============='
-	elif [ "$1" == '--memory' ]
+		output="$(parse_magnitude $2)"
+		k=$?
+		echo ">> $k"
+		if [ $k -eq 0 ]
+		then
+		i	magnitude_range=$output
+			echo "VALID MAGNITUDE: $magnitude_range"
+		else
+			echo $output
+			print_help
+			exit 1
+		fi
+	elif `echo "$2" | grep -q '^[[:digit:]]\{1,\}:[[:digit:]]\{1,\}$'`
 	then
-		echo '============== Performance (Memory: Begin) =============='
-                setup
-
-                for magnitude in $magnitudes
-                do
-                        if [ "$magnitude" -eq 1 ]
-                        then
-                                memory_test '4M' $magnitude 1
-                                clean_for_run
-			elif [ "$magnitude" -eq 10000 ]
-			then
-				memory_test '16M' $magnitude 1
-                                clean_for_run
-                                memory_test '16M' 1 $magnitude
-                                clean_for_run
-			else
-				memory_test '4M' $magnitude 1
-				clean_for_run
-				memory_test '4M' 1 $magnitude
-				clean_for_run
-                        fi
-                done
-
-                clean
-                echo '============== Performance (Memory: Complete) =============='
+		echo 'MAGNITUDE RANGE'
 	else
-		print_help
+		echo 'N'
 	fi
 fi
+
+
+
+
+#if [ "$#" -ne 1 ]
+#then
+#	print_help
+#else
+#	if [ "$1" == '--speed' ]
+#	then
+#		echo '============== Performance (Speed: Begin) =============='
+#		setup
+#
+#		for magnitude in $magnitudes
+#		do
+#			if [ "$magnitude" -eq 1 ]
+#			then
+#				speed_test $magnitude 1
+#				clean_for_run
+#			else
+#				speed_test $magnitude 1
+#				clean_for_run
+#				speed_test 1 $magnitude
+#				clean_for_run
+#			fi
+#		done
+#
+#		clean
+#		echo '============== Performance (Speed: Complete) =============='
+#	elif [ "$1" == '--memory' ]
+#	then
+#		echo '============== Performance (Memory: Begin) =============='
+#               setup
+#
+#                for magnitude in $magnitudes
+#                do
+#                        if [ "$magnitude" -eq 1 ]
+#                        then
+#                                memory_test '4M' $magnitude 1
+#                                clean_for_run
+#			elif [ "$magnitude" -eq 10000 ]
+#			then
+#				memory_test '16M' $magnitude 1
+#                                clean_for_run
+#                                memory_test '16M' 1 $magnitude
+#                                clean_for_run
+#			else
+#				memory_test '4M' $magnitude 1
+#				clean_for_run
+#				memory_test '4M' 1 $magnitude
+#				clean_for_run
+#                        fi
+#                done
+#
+#                clean
+#                echo '============== Performance (Memory: Complete) =============='
+#	else
+#		print_help
+#	fi
+#fi
 
