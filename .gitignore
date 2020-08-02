@@ -7,3 +7,4 @@ pack
 .ant-targets-build.xml
 *.pyc
 gen_file
+venv
