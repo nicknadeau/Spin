@@ -5,12 +5,14 @@
     <property name="workspace" value="."/>
     <property name="source" value="${workspace}/src"/>
     <property name="dependencies-global" value="${workspace-parent}/lib"/>
+    <property name="dependencies" value="${workspace}/lib"/>
     <property name="build-dir" value="${workspace}/build"/>
     <property name="built-sources" value="${build-dir}/main"/>
     <property name="dist" value="${workspace}/dist"/>
 
     <path id="classpath">
-        <pathelement location="${dependencies-global}/junit-4.12.jar"/>
+	    <pathelement location="${dependencies-global}/junit-4.12.jar"/>
+	    <pathelement location="${dependencies}/gson-2.8.6.jar"/>
     </path>
 
     <target name="clean-build-singleuse" depends="clean, build-singleuse"/>
