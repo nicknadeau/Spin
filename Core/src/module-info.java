@@ -3,5 +3,5 @@ module spin.core {
     requires java.sql;
     requires com.google.gson;
 
-    exports spin.core.singleuse;
+    exports spin.core;
 }

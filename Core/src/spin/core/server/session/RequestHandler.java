@@ -1,7 +1,9 @@
 package spin.core.server.session;
 
+import spin.core.lifecycle.CommunicationHolder;
 import spin.core.server.type.ResponseEvent;
 import spin.core.server.type.RunSuiteRequest;
+import spin.core.singleuse.runner.TestSuite;
 import spin.core.singleuse.util.Logger;
 
 import java.io.File;
@@ -57,7 +59,11 @@ public final class RequestHandler {
             URLClassLoader classLoader = new URLClassLoader(dependencyUrls);
 
             LOGGER.log("Loading test suite...");
-            //TODO
+            int suiteId = suiteIds++;
+            TestSuite testSuite = new TestSuite(classNames, classLoader, runSuiteRequest.getSessionContext(), suiteId);
+            if (!CommunicationHolder.singleton().getIncomingSuiteQueue().add(testSuite)) {
+                throw new IllegalStateException("failed to add test suite to queue.");
+            }
             LOGGER.log("Test suite loaded.");
         } catch (Throwable e) {
             //TODO: temporary solution.

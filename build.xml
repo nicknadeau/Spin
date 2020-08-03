@@ -6,9 +6,9 @@
     <property name="coreModule" value="${workspace}/Core"/>
     <property name="exampleModule" value="${workspace}/Example"/>
 
-    <target name="build-singleuse">
+    <target name="build-core">
         <echo message="Building Core module..."/>
-        <ant inheritAll="false" antfile="${coreModule}/build.xml" target="build-singleuse">
+        <ant inheritAll="false" antfile="${coreModule}/build.xml" target="build-core">
             <property name="compile.debug" value="${compile.debug}"/>
         </ant>
     </target>

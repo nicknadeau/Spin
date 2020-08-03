@@ -1,5 +1,7 @@
 package spin.core.singleuse.runner;
 
+import spin.core.server.session.RequestSessionContext;
+import spin.core.server.type.RunSuiteResponse;
 import spin.core.singleuse.execution.TestInfo;
 import spin.core.singleuse.lifecycle.LifecycleListener;
 import spin.core.singleuse.lifecycle.ShutdownMonitor;
@@ -7,10 +9,13 @@ import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
 
 import java.lang.reflect.Method;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -22,13 +27,17 @@ public final class TestSuiteRunner implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestSuiteRunner.class);
     private final Object monitor = new Object();
     private final ShutdownMonitor shutdownMonitor;
+    private final CyclicBarrier barrier;
     private final LifecycleListener lifecycleListener;
     private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
     private final CloseableBlockingQueue<TestSuite> incomingSuiteQueue;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
 
-    private TestSuiteRunner(LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    private TestSuiteRunner(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+        if (barrier == null) {
+            throw new NullPointerException("barrier must be non-null.");
+        }
         if (listener == null) {
             throw new NullPointerException("listener must be non-null.");
         }
@@ -41,6 +50,7 @@ public final class TestSuiteRunner implements Runnable {
         if (outgoingTestQueues == null) {
             throw new NullPointerException("outgoingTestQueues must be non-null.");
         }
+        this.barrier = barrier;
         this.lifecycleListener = listener;
         this.shutdownMonitor = shutdownMonitor;
         this.incomingSuiteQueue = incomingSuiteQueue;
@@ -52,14 +62,15 @@ public final class TestSuiteRunner implements Runnable {
      * Constructs a new suite runner that will put all of the tests it receives into the given queues. It will attempt
      * to add tests to these queues fairly so that they each receive a roughly equal load.
      *
+     * @param barrier The barrier to wait on before running.
      * @param listener The life-cycle listener.
      * @param shutdownMonitor The shutdown monitor.
      * @param incomingSuiteQueue The queue in which test suites are loaded into.
      * @param outgoingTestQueues The queues to load the tests into.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withOutgoingQueue(LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
-        return new TestSuiteRunner(listener, shutdownMonitor, incomingSuiteQueue, outgoingTestQueues, null);
+    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+        return new TestSuiteRunner(barrier, listener, shutdownMonitor, incomingSuiteQueue, outgoingTestQueues, null);
     }
 
     /**
@@ -69,6 +80,7 @@ public final class TestSuiteRunner implements Runnable {
      * This test suite will writer all of the tests, test classes and suites it receives into a database using the given
      * database writer.
      *
+     * @param barrier The barrier to wait on before running.
      * @param listener The life-cycle listener.
      * @param shutdownMonitor The shutdown monitor.
      * @param incomingSuiteQueue The queue in which test suites are loaded into.
@@ -76,20 +88,21 @@ public final class TestSuiteRunner implements Runnable {
      * @param dbConnection The database connection.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withDatabaseWriter(LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestSuite> incomingSuiteQueue, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
         if (dbConnection == null) {
             throw new NullPointerException("dbConnection must be non-null.");
         }
-        return new TestSuiteRunner(listener, shutdownMonitor, incomingSuiteQueue, outgoingTestQueues, dbConnection);
+        return new TestSuiteRunner(barrier, listener, shutdownMonitor, incomingSuiteQueue, outgoingTestQueues, dbConnection);
     }
 
     @Override
     public void run() {
         try {
+            LOGGER.log("Waiting for other threads to hit barrier.");
+            this.barrier.await();
+            LOGGER.log(Thread.currentThread().getName() + " thread started.");
 
             while (this.isAlive) {
-                int suiteDbId = 0;
-
                 try {
                     LOGGER.log("Attempting to fetch next test suite to load...");
                     TestSuite testSuite = this.incomingSuiteQueue.poll(5, TimeUnit.MINUTES);
@@ -114,13 +127,13 @@ public final class TestSuiteRunner implements Runnable {
                             List<TestInfo> testInfos = new ArrayList<>();
                             for (Method method : testClass.getDeclaredMethods()) {
                                 if (method.getAnnotation(org.junit.Test.class) != null) {
-                                    TestInfo testInfo = new TestInfo(testClass, method, testSuiteDetails);
+                                    TestInfo testInfo = new TestInfo(testClass, method, testSuiteDetails, testSuite.sessionContext);
                                     testInfos.add(testInfo);
                                     allTestInfos.add(testInfo);
 
                                     if (this.dbConnection != null) {
                                         testInfo.setTestClassDatabaseId(classDbId);
-                                        testInfo.setTestSuiteDatabaseId(suiteDbId);
+                                        testInfo.setTestSuiteDatabaseId(testSuite.suiteId);
                                     }
                                 }
                             }
@@ -137,12 +150,19 @@ public final class TestSuiteRunner implements Runnable {
 
                         logTestMethods(classToTestInfoMap);
 
-                        writeToDatabase(classToTestInfoMap, allTestInfos, suiteDbId);
+                        writeInitialValuesToDatabase(classToTestInfoMap, allTestInfos, testSuite.suiteId);
 
                         // Execute each of the declared test methods.
                         if (allTestInfos.isEmpty()) {
                             // If we had zero tests to submit then our downstream consumers will never receive anything
-                            // and wait forever. In this case, we notify the lifecycle listener that we are done.
+                            // and wait forever. In this case, we write the results to the database, respond to the client
+                            // and notify the lifecycle listener that we are done.
+                            if (!testSuite.testClassPaths.isEmpty()) {
+                                writeEmptyClassResultToDatabase(classToTestInfoMap.keySet().iterator().next().getName(), testSuite.suiteId);
+                            }
+                            writeSuiteResultToDatabase(testSuite.suiteId);
+                            sendResponse(testSuite.sessionContext, RunSuiteResponse.successful(testSuite.suiteId));
+
                             LOGGER.log("Notifying listener suite is done due to it having zero tests.");
                             this.lifecycleListener.notifyDone();
                         } else {
@@ -174,8 +194,6 @@ public final class TestSuiteRunner implements Runnable {
                     LOGGER.log("Unexpected error.");
                     e.printStackTrace();
                 }
-
-                suiteDbId++;
             }
 
         } catch (Throwable t) {
@@ -204,7 +222,7 @@ public final class TestSuiteRunner implements Runnable {
         }
     }
 
-    private void writeToDatabase(Map<Class<?>, List<TestInfo>> classToTestInfoMap, List<TestInfo> allTestInfos, int suiteDbId) throws SQLException {
+    private void writeInitialValuesToDatabase(Map<Class<?>, List<TestInfo>> classToTestInfoMap, List<TestInfo> allTestInfos, int suiteDbId) throws SQLException {
         if (this.dbConnection != null) {
             Statement statement = this.dbConnection.createStatement();
             statement.execute("INSERT INTO test_suite(id, num_tests) VALUES(" + suiteDbId + ", " + allTestInfos.size() + ")");
@@ -230,6 +248,31 @@ public final class TestSuiteRunner implements Runnable {
                 LOGGER.log("Test: " + testInfo);
             }
         }
+    }
+
+    private void writeEmptyClassResultToDatabase(String testClassName, int suiteDbId) throws SQLException {
+        if (this.dbConnection != null) {
+            Statement statement = this.dbConnection.createStatement();
+            statement.execute("INSERT INTO test_class(id, name, num_tests, num_success, num_failures, duration, suite)"
+                    + " VALUES(0, '" + testClassName + "', 0, 0, 0, 0, " + suiteDbId + ")");
+        }
+    }
+
+    private void writeSuiteResultToDatabase(int suiteDbId) throws SQLException {
+        if (this.dbConnection != null) {
+            Statement statement = this.dbConnection.createStatement();
+            statement.execute("UPDATE test_suite SET num_tests = 0, "
+                    + " num_success = 0, "
+                    + " num_failures = 0, "
+                    + " duration = 0"
+                    + " WHERE id = " + suiteDbId);
+        }
+    }
+
+    private static void sendResponse(RequestSessionContext sessionContext, RunSuiteResponse response) throws ClosedChannelException {
+        sessionContext.clientSession.setResponse(response.toJsonString() + "\n");
+        sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);
+        sessionContext.selector.wakeup();
     }
 
     @Override

@@ -1,5 +1,6 @@
 package spin.core.singleuse.execution;
 
+import spin.core.server.session.RequestSessionContext;
 import spin.core.singleuse.runner.TestSuiteDetails;
 
 import java.lang.reflect.Method;
@@ -21,10 +22,11 @@ public final class TestResult {
     public final String stdout;
     public final String stderr;
     public final TestSuiteDetails testSuiteDetails;
+    public final RequestSessionContext sessionContext;
     public final int testSuiteDbId;
     public final int testClassDbId;
 
-    private TestResult(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, int testSuiteDbId, int testClassDbId) {
+    private TestResult(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext, int testSuiteDbId, int testClassDbId) {
         this.testClass = testClass;
         this.testMethod = testMethod;
         this.successful = successful;
@@ -32,16 +34,17 @@ public final class TestResult {
         this.stdout = stdout;
         this.stderr = stderr;
         this.testSuiteDetails = testSuiteDetails;
+        this.sessionContext = sessionContext;
         this.testSuiteDbId = testSuiteDbId;
         this.testClassDbId = testClassDbId;
     }
 
-    static TestResult withDatabaseId(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, int testSuiteDbId, int testClassDbId) {
-        return new TestResult(testClass, testMethod, successful, durationNanos, stdout, stderr, testSuiteDetails, testSuiteDbId, testClassDbId);
+    static TestResult withDatabaseId(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext, int testSuiteDbId, int testClassDbId) {
+        return new TestResult(testClass, testMethod, successful, durationNanos, stdout, stderr, testSuiteDetails, sessionContext, testSuiteDbId, testClassDbId);
     }
 
-    static TestResult result(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails) {
-        return new TestResult(testClass, testMethod, successful, durationNanos, stdout, stderr, testSuiteDetails, -1, -1);
+    static TestResult result(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext) {
+        return new TestResult(testClass, testMethod, successful, durationNanos, stdout, stderr, testSuiteDetails, sessionContext, -1, -1);
     }
 
     @Override

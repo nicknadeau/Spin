@@ -1,5 +1,6 @@
 package spin.core.singleuse.execution;
 
+import spin.core.server.session.RequestSessionContext;
 import spin.core.singleuse.runner.TestSuiteDetails;
 
 import java.lang.reflect.Method;
@@ -12,13 +13,15 @@ public final class TestInfo {
     public final Class<?> testClass;
     public final Method method;
     public final TestSuiteDetails testSuiteDetails;
+    public final RequestSessionContext sessionContext;
     private int testSuiteDatabaseId;
     private int testClassDatabaseId;
 
-    public TestInfo(Class<?> testClass, Method method, TestSuiteDetails testSuiteDetails) {
+    public TestInfo(Class<?> testClass, Method method, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext) {
         this.testClass = testClass;
         this.method = method;
         this.testSuiteDetails = testSuiteDetails;
+        this.sessionContext = sessionContext;
     }
 
     public void setTestClassDatabaseId(int id) {

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<project basedir="." default="clean-build-singleuse" name="spin-core">
+<project basedir="." default="clean-build-core" name="spin-core">
 
     <property name="workspace-parent" value=".."/>
     <property name="workspace" value="."/>
@@ -15,9 +15,9 @@
 	    <pathelement location="${dependencies}/gson-2.8.6.jar"/>
     </path>
 
-    <target name="clean-build-singleuse" depends="clean, build-singleuse"/>
+    <target name="clean-build-core" depends="clean, build-core"/>
 
-    <target name="build-singleuse">
+    <target name="build-core">
         <mkdir dir="${built-sources}"/>
         <javac debug="true" debuglevel="source,lines,vars" includeantruntime="false" release="9" srcdir="${source}" destdir="${built-sources}" includes="**/*.java,module-info.java">
             <modulepath>
@@ -26,10 +26,10 @@
             </modulepath>
         </javac>
 
-        <jar jarfile="${dist}/spin-singleuse.jar" basedir="${built-sources}">
+        <jar jarfile="${dist}/spin-core.jar" basedir="${built-sources}">
             <manifest>
-                <attribute name="Automatic-Module-Name" value="spin.core.singleuse" />
-                <attribute name="Main-Class" value="spin.core.singleuse.SingleUseEntryPoint" />
+                <attribute name="Automatic-Module-Name" value="spin.core" />
+                <attribute name="Main-Class" value="spin.core.LongLivedEntryPoint" />
             </manifest>
         </jar>
 

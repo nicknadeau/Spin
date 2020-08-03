@@ -1,5 +1,7 @@
 package spin.core.singleuse.runner;
 
+import spin.core.server.session.RequestSessionContext;
+
 import java.util.List;
 
 /**
@@ -9,14 +11,18 @@ import java.util.List;
 public final class TestSuite {
     final List<String> testClassPaths;
     final ClassLoader classLoader;
+    final RequestSessionContext sessionContext;
+    final int suiteId;
 
-    public TestSuite(List<String> testClassPaths, ClassLoader classLoader) {
+    public TestSuite(List<String> testClassPaths, ClassLoader classLoader, RequestSessionContext context, int suiteId) {
         this.testClassPaths = testClassPaths;
         this.classLoader = classLoader;
+        this.sessionContext = context;
+        this.suiteId = suiteId;
     }
 
     @Override
     public String toString() {
-        return this.getClass().getName() + " { contains " + this.testClassPaths.size() + " class(es) }";
+        return this.getClass().getName() + " { suite id: " + this.suiteId + ", contains " + this.testClassPaths.size() + " class(es) }";
     }
 }

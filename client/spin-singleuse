@@ -36,6 +36,13 @@ then
 	exit 1
 fi
 
+# Verify that the python json parser is in the same directory as this script and if not fail out.
+if [ ! -f 'json_parser.py' ]
+then
+	echo 'The json_parser.py script must be placed in the same directory as this script: did not find it.'
+	exit 1
+fi
+
 # Determine which optional flags have been given.
 num_optionals=0
 verbose=false
@@ -105,22 +112,83 @@ test_dir="${!test_dir_index}"
 matcher="${!matcher_index}"
 
 # Collect any given dependencies and then run the program.
+dependencies='['
+is_first=true
 for dependency in ${@:$((matcher_index+1))}
 do
-	dependencies="$dependencies $(realpath $dependency)"
+	if [ $is_first = true ]
+	then
+		dependencies="$dependencies"'"'"$(realpath $dependency)"'"'
+		is_first=false
+	else
+		dependencies="$dependencies"',"'"$(realpath $dependency)"'"'
+	fi
 done
+dependencies="$dependencies]"
 
 if [ "$persist" = true ]
 then
-	classpath='spin-singleuse.jar:junit-4.12.jar:postgresql-42.2.12.jar'
+	classpath='spin-core.jar:junit-4.12.jar:postgresql-42.2.12.jar:gson-2.8.6.jar'
 else
-	classpath='spin-singleuse.jar:junit-4.12.jar'
+	classpath='spin-core.jar:junit-4.12.jar:gson-2.8.6.jar'
 fi
 
 # Set the database config file path property here. We hardcode this. Note this is only used when -p is given.
 dbconfig_property='-Ddb_config_path=./config/db_config.txt'
 
+echo '[spin-singleuse] Starting Spin...' >> output.txt
+
 # Run using the specified max heap size or our default 64MB
 # Do a heap dump if an OOM is encountered
 # If an OOM is encountered kill the process. Why? So we explicitly exit with a non-zero exit code to indicate failure.
-java -Xmx$heap_size -XX:+HeapDumpOnOutOfMemoryError -XX:OnOutOfMemoryError="kill -9 %p" "$verbose_property" "$persist_property" "$dbconfig_property" "$num_threads_property" -cp "$classpath" spin.core.singleuse.SingleUseEntryPoint "$(realpath $test_dir)" "$matcher" $dependencies
+java -Xmx$heap_size -XX:+HeapDumpOnOutOfMemoryError -XX:OnOutOfMemoryError="kill -9 %p" "$verbose_property" "$persist_property" "$dbconfig_property" "$num_threads_property" -cp "$classpath" spin.core.LongLivedEntryPoint &> output.txt &
+
+if [ $? -ne 0 ]
+then
+	echo 'Failed to start Spin!'
+	exit 1
+fi
+
+echo '[spin-singleuse] Spin successfully started.' >> output.txt
+
+echo '[spin-singleuse] Waiting for Spin to publish server port' >> output.txt
+spin_pid="$(echo $!)"
+info_file="$(realpath ~/.spin/info_$spin_pid)"
+
+echo "[spin-singleuse] Expecting to find program info in file: $info_file" >> output.txt
+while [ ! -f $info_file ]
+do
+	echo "[spin-singleuse] Waiting for file to be created: $info_file" >> output.txt
+	sleep 1
+done
+
+port="$(cat $info_file)"
+echo "[spin-singleuse] Found published port: $port" >> output.txt
+echo '[spin-singleuse] Running tests...' >> output.txt
+
+echo '{"request_type":"run_suite","body":{"base_dir":"'"$(realpath $test_dir)"'", "matcher":"'"$matcher"'", "dependencies":'"$dependencies"'}}' > input.txt
+
+is_connected=false
+while [ $is_connected = false ]
+do
+	result="$(netcat 127.0.0.1 $port < input.txt)"
+	if [ $? -eq 0 ]
+	then
+		is_connected=true
+	else
+		sleep 1
+	fi
+done
+rm input.txt
+
+echo '[spin-singleuse] All tests completed.' >> output.txt
+
+is_success="$(python3 json_parser.py --run_suite --is_successful "$result")"
+if [ $is_success = true ]
+then
+	echo "$(python3 json_parser.py --run_suite --get_suite_id "$result")"
+else
+	echo "$(python3 json_parser.py --run_suite --get_error "$result")"
+	exit 1
+fi
+

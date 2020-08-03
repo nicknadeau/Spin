@@ -9,6 +9,7 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -20,13 +21,17 @@ import java.util.concurrent.TimeUnit;
 public final class TestExecutor implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestExecutor.class);
     private final Object monitor = new Object();
+    private final CyclicBarrier barrier;
     private final ShutdownMonitor shutdownMonitor;
     private final CloseableBlockingQueue<TestInfo> tests;
     private final CloseableBlockingQueue<TestResult> results;
     private final boolean writeToDb;
     private volatile boolean isAlive = true;
 
-    private TestExecutor(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
+    private TestExecutor(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
+        if (barrier == null) {
+            throw new NullPointerException("barrier must be non-null.");
+        }
         if (shutdownMonitor == null) {
             throw new NullPointerException("shutdownMonitor must be non-null.");
         }
@@ -36,6 +41,7 @@ public final class TestExecutor implements Runnable {
         if (results == null) {
             throw new NullPointerException("results must be non-null.");
         }
+        this.barrier = barrier;
         this.shutdownMonitor = shutdownMonitor;
         this.tests = tests;
         this.results = results;
@@ -48,19 +54,24 @@ public final class TestExecutor implements Runnable {
      * The executor will wait on new tests to arrive on the designed test queue it is given.
      * The executor will place each new result when it is finished running a test into the given queue.
      *
+     * @param barrier The barrier to wait on before running.
      * @param shutdownMonitor The shutdown monitor.
      * @param tests The queue in which all incoming tests to be executed by this executor are submitted.
      * @param results The queue that all results are placed in when done by this executor.
      * @param writeToDb Whether or not database writes are enabled for result recording.
      * @return the new executor.
      */
-    public static TestExecutor withQueues(ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
-        return new TestExecutor(shutdownMonitor, tests, results, writeToDb);
+    public static TestExecutor withQueues(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
+        return new TestExecutor(barrier, shutdownMonitor, tests, results, writeToDb);
     }
 
     @Override
     public void run() {
         try {
+            LOGGER.log("Waiting for other threads to hit barrier.");
+            this.barrier.await();
+            LOGGER.log(Thread.currentThread().getName() + " thread started.");
+
             while (this.isAlive) {
                 LOGGER.log("[" + Thread.currentThread().getName() + "] Waiting for new test method to be loaded...");
                 TestInfo testInfo = null;
@@ -90,8 +101,8 @@ public final class TestExecutor implements Runnable {
                         String capturedStderr = closeAndCaptureStream(false, stderr);
 
                         result = (this.writeToDb)
-                                ? TestResult.withDatabaseId(testInfo.testClass, testInfo.method, true, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails, testInfo.getTestSuiteDatabaseId(), testInfo.getTestClassDatabaseId())
-                                : TestResult.result(testInfo.testClass, testInfo.method, true, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails);
+                                ? TestResult.withDatabaseId(testInfo.testClass, testInfo.method, true, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails, testInfo.sessionContext, testInfo.getTestSuiteDatabaseId(), testInfo.getTestClassDatabaseId())
+                                : TestResult.result(testInfo.testClass, testInfo.method, true, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails, testInfo.sessionContext);
 
                     } catch (Exception e) {
                         long endTime = System.nanoTime();
@@ -100,8 +111,8 @@ public final class TestExecutor implements Runnable {
                         String capturedStderr = closeAndCaptureStream(false, stderr);
 
                         result = (this.writeToDb)
-                                ? TestResult.withDatabaseId(testInfo.testClass, testInfo.method, false, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails, testInfo.getTestSuiteDatabaseId(), testInfo.getTestClassDatabaseId())
-                                : TestResult.result(testInfo.testClass, testInfo.method, false, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails);
+                                ? TestResult.withDatabaseId(testInfo.testClass, testInfo.method, false, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails, testInfo.sessionContext, testInfo.getTestSuiteDatabaseId(), testInfo.getTestClassDatabaseId())
+                                : TestResult.result(testInfo.testClass, testInfo.method, false, endTime - startTime, capturedStdout, capturedStderr, testInfo.testSuiteDetails, testInfo.sessionContext);
                     }
 
                     synchronized (this.monitor) {

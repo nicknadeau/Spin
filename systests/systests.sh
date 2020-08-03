@@ -16,17 +16,20 @@
 filename='systests'
 spin='spin-singleuse'
 spin_cmd='./spin-singleuse'
-spin_jar='spin-singleuse.jar'
+spin_jar='spin-core.jar'
+json_parser='json_parser.py'
+json_parser_orig='spin/json_parser.py'
 postgres_jar='postgresql-42.2.12.jar'
 junit_jar='junit-4.12.jar'
 hamcrest_jar='hamcrest-all-1.3.jar'
+gson_jar='gson-2.8.6.jar'
 db_config='db_config.txt'
 config_dir='config'
 spin_log_dir='spin_logs'
 log='systests.log'
 autogen_cmd='python3 spin/suite_autogen.py'
 gen_file='gen_file'
-any_class_matcher='.*\.class'
+any_class_matcher='.*\\\\.class'
 curr_dir="$(pwd)"
 num_tests=0
 num_success=0
@@ -95,6 +98,8 @@ function clean_for_test() {
 function clean() {
 	echo "[$filename]: Cleaning up the workspace."
 	clean_for_test
+	rm output.txt &> /dev/null
+	rm $json_parser &> /dev/null
 	rm *.jar &> /dev/null
 	rm $spin &> /dev/null
 	rm -rf $config_dir &> /dev/null
@@ -107,12 +112,14 @@ function setup() {
 	clean
 	echo "[$filename]: Building the single-use Spin project."
 	cd .. && \
-	ant build-singleuse &> "$curr_dir/$log" && \
+	ant build-core &> "$curr_dir/$log" && \
 	cd $curr_dir && \
 	echo "[$filename]: Fetching all dependencies." && \
 	cp ../client/$spin . && \
+	cp $json_parser_orig . && \
 	cp ../Core/dist/$spin_jar . && \
 	cp ../Core/lib/$postgres_jar . && \
+	cp ../Core/lib/$gson_jar . && \
 	cp ../lib/$junit_jar . && \
 	cp ../Example/lib/$hamcrest_jar . && \
 	mkdir $config_dir && \
@@ -163,12 +170,7 @@ function run_spin() {
 		echo "[$filename]: USAGE:: run_spin <test dir> <class matcher> <name> [<dependency>...]"
 		return 1
 	fi
-	if [ $is_verbose = true ]
-	then
-		eval $spin_cmd -v -p 4 "$1" "$2" ${@:4}
-	else
-		eval $spin_cmd -v -p 4 "$1" "$2" ${@:4} &> "$3"
-	fi
+	echo `eval $spin_cmd -v -p 4 "$1" "$2" ${@:4}`
 }
 
 # Args:: <suite id>
@@ -197,14 +199,14 @@ function test_multi_class_single_test() {
 		return 1
 	fi
 
-	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
 	if [ "$?" -ne 0 ]
 	then
 		print_spin_fail_msg "$name"
 		return 1
 	fi
 
-	validate_results 0
+	validate_results $suite_id
 	if [ "$?" -eq 0 ]
 	then
 		print_success_msg "$name"
@@ -226,14 +228,14 @@ function test_multi_class_multi_test() {
 		return 1
 	fi
 
-	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
 	if [ "$?" -ne 0 ]
 	then
 		print_spin_fail_msg "$name"
 		return 1
 	fi
 
-	validate_results 0
+	validate_results $suite_id
 	if [ "$?" -eq 0 ]
 	then
 		print_success_msg "$name"
@@ -256,14 +258,14 @@ function test_multi_package_single_test() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -286,14 +288,14 @@ function test_multi_package_multi_test() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -316,14 +318,14 @@ function test_some_failures() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -345,14 +347,14 @@ function test_all_failures() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -375,14 +377,14 @@ function test_writes_to_stdout() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -405,14 +407,14 @@ function test_writes_to_stderr() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -434,14 +436,14 @@ function test_single_class_single_test() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -463,14 +465,14 @@ function test_single_class_multi_test() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -492,14 +494,14 @@ function test_single_class_single_test_failure() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -521,14 +523,14 @@ function test_single_class_multi_test_all_fail() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -551,14 +553,14 @@ function test_single_class_multi_test_some_fail() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -580,14 +582,14 @@ function test_single_class_zero_tests() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -609,14 +611,14 @@ function test_multi_class_zero_tests() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -639,14 +641,14 @@ function test_multi_class_some_empty() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -666,7 +668,7 @@ function test_zero_test_classes() {
 	mkdir build
 	mkdir "build/$name"
 	mkdir "build/$name/test"
-	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar" &> /dev/null
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -688,14 +690,14 @@ function test_project_with_src_files() {
                 return 1
         fi
 
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "build/$name/src"  "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "build/$name/src"  "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"
@@ -722,14 +724,14 @@ function test_some_fail_out_err_empty_src() {
 		return 1
 	fi
 
-	run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "build/$name/src" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "build/$name/src" "$junit_jar" "$hamcrest_jar")"
 	if [ "$?" -ne 0 ]
 	then
 		print_spin_fail_msg "$name"
 		return 1
 	fi
 
-	validate_results 0
+	validate_results $suite_id
 	if [ "$?" -eq 0 ]
 	then
 		print_success_msg "$name"
@@ -752,14 +754,14 @@ function test_missing_dependency() {
         fi
 
 	# We omit the src dependencies.
-        run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar"
+	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
         if [ "$?" -ne 0 ]
         then
                 print_spin_fail_msg "$name"
                 return 1
         fi
 
-        validate_results 0
+        validate_results $suite_id
         if [ "$?" -eq 0 ]
         then
                 print_success_msg "$name"

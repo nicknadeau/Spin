@@ -14,7 +14,7 @@ Currently, the only way the project can be built is as a so-called "single-use" 
 The single-use program can be built as a jar file using the following command:
  
 ```shell script
-ant build-singleuse
+ant build-core
 ```
 
 The client used to interact with this single-use jar is a simple shell script named `spin-singleuse`, which can be found in the `client` directory.
@@ -34,7 +34,7 @@ To run the tests on the single-use version of Spin run the following commands:
 cd demo/
 ./example-singleuse.sh
 cd example/
-./spin-singleuse 4 build/test/ '.*Test\.class' build/src/ lib/*
+./spin-singleuse 4 build/test/ '.*Test\\.class' build/src/ lib/*
 ```
 
 The above command will run Spin using 4 threads. It will run all of the tests whose file names end in the pattern 'Test.class' (eg. ThisTest.class) in the given test directory `build/test` and it supplies all of the dependency `.class` and `.jar` files required to run these tests, located in the `build/src` and `lib` directories.

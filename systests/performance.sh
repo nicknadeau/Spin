@@ -3,14 +3,17 @@
 filename='performance'
 spin='spin-singleuse'
 spin_cmd='./spin-singleuse'
-spin_jar='spin-singleuse.jar'
+json_parser='json_parser.py'
+json_parser_orig='spin/json_parser.py'
+spin_jar='spin-core.jar'
 junit_jar='junit-4.12.jar'
 hamcrest_jar='hamcrest-all-1.3.jar'
+gson_jar='gson-2.8.6.jar'
 spin_log_dir='spin_logs'
 log='systests.log'
 autogen_cmd='python3 spin/suite_autogen.py'
 gen_file='gen_file'
-any_class_matcher='.*\.class'
+any_class_matcher='.*\\\\.class'
 curr_dir="$(pwd)"
 
 magnitudes='1 10 100 1000 10000'
@@ -32,6 +35,8 @@ function clean_for_run() {
 function clean() {
 	echo -e "\n[$filename]: Cleaning up the workspace."
 	clean_for_run
+	rm output.txt &> /dev/null
+	rm $json_parser &> /dev/null
 	rm *.jar &> /dev/null
 	rm $spin &> /dev/null
 	rm -rf "$spin_log_dir" &> /dev/null
@@ -43,11 +48,13 @@ function setup() {
 	clean
 	echo "[$filename]: Building the single-use Spin project."
 	cd .. && \
-	ant build-singleuse &> "$curr_dir/$log" && \
+	ant build-core &> "$curr_dir/$log" && \
 	cd $curr_dir && \
 	echo "[$filename]: Fetching all dependencies." && \
 	cp ../client/$spin . && \
+	cp $json_parser_orig . && \
 	cp ../Core/dist/$spin_jar . && \
+	cp ../Core/lib/$gson_jar . && \
 	cp ../lib/$junit_jar . && \
 	cp ../Example/lib/$hamcrest_jar . && \
 	cd $curr_dir && \
@@ -136,7 +143,7 @@ function memory_test() {
 		report='SUCCESS'
 	else
 		report='FAILED'
-		rm *.hprof
+		rm *.hprof &> /dev/null
 	fi
 
         num_classes="$2"

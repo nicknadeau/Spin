@@ -1,5 +1,7 @@
 package spin.core.singleuse.output;
 
+import spin.core.server.session.RequestSessionContext;
+import spin.core.server.type.RunSuiteResponse;
 import spin.core.singleuse.execution.TestResult;
 import spin.core.singleuse.lifecycle.LifecycleListener;
 import spin.core.singleuse.lifecycle.ShutdownMonitor;
@@ -8,10 +10,13 @@ import spin.core.singleuse.util.Logger;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -21,24 +26,24 @@ import java.util.concurrent.TimeUnit;
  */
 public final class ResultOutputter implements Runnable {
     private static final Logger LOGGER = Logger.forClass(ResultOutputter.class);
+    private final CyclicBarrier barrier;
     private final ShutdownMonitor shutdownMonitor;
-    private final LifecycleListener lifecycleListener;
     private final List<CloseableBlockingQueue<TestResult>> incomingResultQueues;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
 
-    private ResultOutputter(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
+    private ResultOutputter(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
+        if (barrier == null) {
+            throw new NullPointerException("barrier must be non-null.");
+        }
         if (shutdownMonitor == null) {
             throw new NullPointerException("shutdownMonitor must be non-null.");
-        }
-        if (lifecycleListener == null) {
-            throw new NullPointerException("lifecycleListener must be non-null.");
         }
         if (incomingResultQueues == null) {
             throw new NullPointerException("incomingResultQueues must be non-null.");
         }
+        this.barrier = barrier;
         this.shutdownMonitor = shutdownMonitor;
-        this.lifecycleListener = lifecycleListener;
         this.incomingResultQueues = incomingResultQueues;
         this.dbConnection = dbConnection;
     }
@@ -47,13 +52,13 @@ public final class ResultOutputter implements Runnable {
      * Creates a new result outputter that expects to witness the specified number of tests per each class as given by
      * the mapping and which expects to find all of the test results on the list of queues given to it.
      *
+     * @param barrier The barrier to wait on before running.
      * @param shutdownMonitor The shutdown monitor.
-     * @param lifecycleListener The lifecycle listener.
      * @param incomingResultQueues The queues that test results may be coming in on asynchronously.
      * @return the new outputter.
      */
-    public static ResultOutputter outputter(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
-        return new ResultOutputter(shutdownMonitor, lifecycleListener, incomingResultQueues, null);
+    public static ResultOutputter outputter(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
+        return new ResultOutputter(barrier, shutdownMonitor, incomingResultQueues, null);
     }
 
     /**
@@ -62,22 +67,28 @@ public final class ResultOutputter implements Runnable {
      *
      * As each entry comes in it will be written to a database using the database writer.
      *
+     * @param barrier The barrier to wait on before running.
      * @param shutdownMonitor The shutdown monitor.
-     * @param lifecycleListener The lifecycle listener.
      * @param incomingResultQueues The queues that test results may be coming in on asynchronously.
      * @param dbConnection The database connection.
      * @return the new outputter.
      */
-    public static ResultOutputter outputterToConsoleAndDb(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
+    public static ResultOutputter outputterToConsoleAndDb(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
         if (dbConnection == null) {
             throw new NullPointerException("dbConnection must be non-null.");
         }
-        return new ResultOutputter(shutdownMonitor, lifecycleListener, incomingResultQueues, dbConnection);
+        return new ResultOutputter(barrier, shutdownMonitor, incomingResultQueues, dbConnection);
     }
 
     @Override
     public void run() {
+        TestResult result = null;
+
         try {
+            LOGGER.log("Waiting on the other threads to hit the barrier.");
+            this.barrier.await();
+            LOGGER.log(Thread.currentThread().getName() + " thread started.");
+
             System.out.println("\n===============================================================");
             while (this.isAlive) {
                 for (CloseableBlockingQueue<TestResult> incomingResultQueue : this.incomingResultQueues) {
@@ -87,7 +98,7 @@ public final class ResultOutputter implements Runnable {
 
                     LOGGER.log("Checking for new results...");
 
-                    TestResult result = incomingResultQueue.poll(5, TimeUnit.MINUTES);
+                    result = incomingResultQueue.poll(5, TimeUnit.MINUTES);
 
                     if (result != null) {
                         LOGGER.log("New result obtained.");
@@ -133,6 +144,8 @@ public final class ResultOutputter implements Runnable {
                             System.out.println("\tTests: " + result.testSuiteDetails.getTotalNumTests() + ", successes: " + result.testSuiteDetails.getTotalNumSuccessfulTests() + ", failures: " + result.testSuiteDetails.getTotalNumFailedTests());
                             System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalSuiteDuration()));
                             writeSuiteResultToDatabase(result);
+
+                            sendResponse(result.sessionContext, RunSuiteResponse.successful(result.testSuiteDbId));
                             LOGGER.log("Witnessed all tests in suite.");
                             this.isAlive = false;
                             break;
@@ -142,6 +155,13 @@ public final class ResultOutputter implements Runnable {
             }
 
         } catch (Throwable t) {
+            if (result != null) {
+                try {
+                    sendResponse(result.sessionContext, RunSuiteResponse.failed("Unexpected error: " + t.getMessage()));
+                } catch (ClosedChannelException e) {
+                    // Nothing to do. We are already in a panic. Ignore this.
+                }
+            }
             this.shutdownMonitor.panic(t);
         } finally {
             System.out.println("===============================================================");
@@ -153,7 +173,6 @@ public final class ResultOutputter implements Runnable {
                     e.printStackTrace();
                 }
             }
-            this.lifecycleListener.notifyDone();
             LOGGER.log("Exiting.");
         }
     }
@@ -214,6 +233,12 @@ public final class ResultOutputter implements Runnable {
                     + " duration = " + testResult.testSuiteDetails.getTotalSuiteDuration()
                     + " WHERE id = " + testResult.testSuiteDbId);
         }
+    }
+
+    private static void sendResponse(RequestSessionContext sessionContext, RunSuiteResponse response) throws ClosedChannelException {
+        sessionContext.clientSession.setResponse(response.toJsonString() + "\n");
+        sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);
+        sessionContext.selector.wakeup();
     }
 
     private static String nanosToSecondsString(long nanos) {

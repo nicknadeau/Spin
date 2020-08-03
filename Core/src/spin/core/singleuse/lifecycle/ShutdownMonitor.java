@@ -17,7 +17,7 @@ public final class ShutdownMonitor {
      *
      * @param listener The listener to notify.
      */
-    ShutdownMonitor(ShutdownListener listener) {
+    public ShutdownMonitor(ShutdownListener listener) {
         if (listener == null) {
             throw new NullPointerException("listener must be non-null.");
         }
