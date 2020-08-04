@@ -120,29 +120,7 @@ public final class TestSuiteRunner implements Runnable {
                         TestSuiteDetails testSuiteDetails = new TestSuiteDetails();
 
                         // Split out each of the test methods declared in the given test classes.
-                        List<TestInfo> allTestInfos = new ArrayList<>();
-                        int classDbId = 0;
-                        for (Class<?> testClass : testClasses) {
-
-                            List<TestInfo> testInfos = new ArrayList<>();
-                            for (Method method : testClass.getDeclaredMethods()) {
-                                if (method.getAnnotation(org.junit.Test.class) != null) {
-                                    TestInfo testInfo = new TestInfo(testClass, method, testSuiteDetails, testSuite.sessionContext);
-                                    testInfos.add(testInfo);
-                                    allTestInfos.add(testInfo);
-
-                                    if (this.dbConnection != null) {
-                                        testInfo.setTestClassDatabaseId(classDbId);
-                                        testInfo.setTestSuiteDatabaseId(testSuite.suiteId);
-                                    }
-                                }
-                            }
-                            classToTestInfoMap.put(testClass, testInfos);
-
-                            if (this.dbConnection != null) {
-                                classDbId++;
-                            }
-                        }
+                        List<TestInfo> allTestInfos = createTestInfos(testSuite, testClasses, testSuiteDetails, classToTestInfoMap);
 
                         for (Map.Entry<Class<?>, List<TestInfo>> classToInfoEntry : classToTestInfoMap.entrySet()) {
                             testSuiteDetails.setNumTestsPerClass(classToInfoEntry.getKey(), classToInfoEntry.getValue().size());
@@ -153,42 +131,7 @@ public final class TestSuiteRunner implements Runnable {
                         writeInitialValuesToDatabase(classToTestInfoMap, allTestInfos, testSuite.suiteId);
 
                         // Execute each of the declared test methods.
-                        if (allTestInfos.isEmpty()) {
-                            // If we had zero tests to submit then our downstream consumers will never receive anything
-                            // and wait forever. In this case, we write the results to the database, respond to the client
-                            // and notify the lifecycle listener that we are done.
-                            if (!testSuite.testClassPaths.isEmpty()) {
-                                writeEmptyClassResultToDatabase(classToTestInfoMap.keySet().iterator().next().getName(), testSuite.suiteId);
-                            }
-                            writeSuiteResultToDatabase(testSuite.suiteId);
-                            sendResponse(testSuite.sessionContext, RunSuiteResponse.successful(testSuite.suiteId));
-
-                            LOGGER.log("Notifying listener suite is done due to it having zero tests.");
-                            this.lifecycleListener.notifyDone();
-                        } else {
-                            int index = 0;
-                            while (index < allTestInfos.size()) {
-                                if (!this.isAlive) {
-                                    break;
-                                }
-
-                                for (CloseableBlockingQueue<TestInfo> outgoingTestQueue : this.outgoingTestQueues) {
-                                    if (!this.isAlive) {
-                                        break;
-                                    }
-
-                                    LOGGER.log("Attempting to submit test #" + (index + 1) + " of " + allTestInfos.size());
-                                    if (outgoingTestQueue.add(allTestInfos.get(index), 15, TimeUnit.SECONDS)) {
-                                        LOGGER.log("Submitted test #" + (index + 1));
-                                        index++;
-                                    }
-
-                                    if (index >= allTestInfos.size()) {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                        runTests(testSuite, allTestInfos, classToTestInfoMap);
                     }
                 } catch (ClassNotFoundException | InterruptedException e) {
                     LOGGER.log("Unexpected error.");
@@ -220,6 +163,71 @@ public final class TestSuiteRunner implements Runnable {
         synchronized (this.monitor) {
             this.monitor.notifyAll();
         }
+    }
+
+    private void runTests(TestSuite testSuite, List<TestInfo> testInfos, Map<Class<?>, List<TestInfo>> classToTestInfoMap) throws SQLException, ClosedChannelException, InterruptedException {
+        if (testInfos.isEmpty()) {
+            // If we had zero tests to submit then our downstream consumers will never receive anything
+            // and wait forever. In this case, we write the results to the database, respond to the client
+            // and notify the lifecycle listener that we are done.
+            if (!testSuite.testClassPaths.isEmpty()) {
+                writeEmptyClassResultToDatabase(classToTestInfoMap.keySet().iterator().next().getName(), testSuite.suiteId);
+            }
+            writeSuiteResultToDatabase(testSuite.suiteId);
+            sendResponse(testSuite.sessionContext, RunSuiteResponse.successful(testSuite.suiteId));
+
+            LOGGER.log("Notifying listener suite is done due to it having zero tests.");
+            this.lifecycleListener.notifyDone();
+        } else {
+            int index = 0;
+            while (index < testInfos.size()) {
+                if (!this.isAlive) {
+                    break;
+                }
+
+                for (CloseableBlockingQueue<TestInfo> outgoingTestQueue : this.outgoingTestQueues) {
+                    if (!this.isAlive) {
+                        break;
+                    }
+
+                    LOGGER.log("Attempting to submit test #" + (index + 1) + " of " + testInfos.size());
+                    if (outgoingTestQueue.add(testInfos.get(index), 15, TimeUnit.SECONDS)) {
+                        LOGGER.log("Submitted test #" + (index + 1));
+                        index++;
+                    }
+
+                    if (index >= testInfos.size()) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private List<TestInfo> createTestInfos(TestSuite testSuite, List<Class<?>> testClasses, TestSuiteDetails testSuiteDetails, Map<Class<?>, List<TestInfo>> classToTestInfoMap) {
+        List<TestInfo> allTestInfos = new ArrayList<>();
+        int classDbId = 0;
+        for (Class<?> testClass : testClasses) {
+            List<TestInfo> testInfos = new ArrayList<>();
+            for (Method method : testClass.getDeclaredMethods()) {
+                if (method.getAnnotation(org.junit.Test.class) != null) {
+                    TestInfo testInfo = new TestInfo(testClass, method, testSuiteDetails, testSuite.sessionContext);
+                    testInfos.add(testInfo);
+                    allTestInfos.add(testInfo);
+
+                    if (this.dbConnection != null) {
+                        testInfo.setTestClassDatabaseId(classDbId);
+                        testInfo.setTestSuiteDatabaseId(testSuite.suiteId);
+                    }
+                }
+            }
+            classToTestInfoMap.put(testClass, testInfos);
+
+            if (this.dbConnection != null) {
+                classDbId++;
+            }
+        }
+        return allTestInfos;
     }
 
     private void writeInitialValuesToDatabase(Map<Class<?>, List<TestInfo>> classToTestInfoMap, List<TestInfo> allTestInfos, int suiteDbId) throws SQLException {
