@@ -1,24 +1,24 @@
 package spin.core.lifecycle;
 
-import spin.core.singleuse.runner.TestSuite;
+import spin.core.server.type.RunSuiteRequest;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 
 public final class CommunicationHolder {
     private static CommunicationHolder singleton = null;
-    private final CloseableBlockingQueue<TestSuite> incomingSuiteQueue;
+    private final CloseableBlockingQueue<RunSuiteRequest> runSuiteRequestSubmissionQueue;
 
-    private CommunicationHolder(CloseableBlockingQueue<TestSuite> incomingSuiteQueue) {
-        if (incomingSuiteQueue == null) {
-            throw new NullPointerException("incomingSuiteQueue must be non-null.");
+    private CommunicationHolder(CloseableBlockingQueue<RunSuiteRequest> runSuiteRequestQueue) {
+        if (runSuiteRequestQueue == null) {
+            throw new NullPointerException("runSuiteRequestQueue must be non-null.");
         }
-        this.incomingSuiteQueue = incomingSuiteQueue;
+        this.runSuiteRequestSubmissionQueue = runSuiteRequestQueue;
     }
 
-    public static void initialize(CloseableBlockingQueue<TestSuite> incomingSuiteQueue) {
+    public static void initialize(CloseableBlockingQueue<RunSuiteRequest> runSuiteRequestQueue) {
         if (singleton != null) {
             throw new IllegalStateException("Cannot initialize: holder is already initialized.");
         }
-        singleton = new CommunicationHolder(incomingSuiteQueue);
+        singleton = new CommunicationHolder(runSuiteRequestQueue);
     }
 
     public static CommunicationHolder singleton() {
@@ -28,7 +28,12 @@ public final class CommunicationHolder {
         return singleton;
     }
 
-    public CloseableBlockingQueue<TestSuite> getIncomingSuiteQueue() {
-        return this.incomingSuiteQueue;
+    /**
+     * Returns the queue that is used to submit {@link RunSuiteRequest}s into the system.
+     *
+     * @return the run-suite request submission queue.
+     */
+    public CloseableBlockingQueue<RunSuiteRequest> getRunSuiteRequestSubmissionQueue() {
+        return this.runSuiteRequestSubmissionQueue;
     }
 }

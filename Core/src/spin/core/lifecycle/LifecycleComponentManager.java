@@ -1,6 +1,7 @@
 package spin.core.lifecycle;
 
 import spin.core.server.Server;
+import spin.core.server.type.RunSuiteRequest;
 import spin.core.singleuse.execution.TestExecutor;
 import spin.core.singleuse.execution.TestInfo;
 import spin.core.singleuse.execution.TestResult;
@@ -8,7 +9,6 @@ import spin.core.singleuse.lifecycle.LifecycleListener;
 import spin.core.singleuse.lifecycle.ShutdownMonitor;
 import spin.core.singleuse.output.DatabaseConnectionProvider;
 import spin.core.singleuse.output.ResultOutputter;
-import spin.core.singleuse.runner.TestSuite;
 import spin.core.singleuse.runner.TestSuiteRunner;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
@@ -26,7 +26,7 @@ public final class LifecycleComponentManager {
     private static final Logger LOGGER = Logger.forClass(LifecycleComponentManager.class);
     private enum State { PRE_INIT, INIT, STARTED, STOPPED }
     private State state = State.PRE_INIT;
-    private CloseableBlockingQueue<TestSuite> testSuiteQueue;
+    private CloseableBlockingQueue<RunSuiteRequest> runSuiteRequestSubmissionQueue;
     private List<CloseableBlockingQueue<TestInfo>> testInfoQueues;
     private List<CloseableBlockingQueue<TestResult>> testResultQueues;
     private Server server;
@@ -70,7 +70,7 @@ public final class LifecycleComponentManager {
         }
 
         CyclicBarrier barrier = new CyclicBarrier(config.numExecutorThreads + 3);
-        this.testSuiteQueue = CloseableBlockingQueue.withCapacity(config.incomingSuiteQueueCapacity);
+        this.runSuiteRequestSubmissionQueue = CloseableBlockingQueue.withCapacity(config.incomingSuiteQueueCapacity);
 
         this.server = Server.forHostAndRandomizedPort(barrier, "127.0.0.1", lifecycleListener, shutdownMonitor);
         this.testInfoQueues = createTestQueues(config);
@@ -80,11 +80,11 @@ public final class LifecycleComponentManager {
                 ? ResultOutputter.outputterToConsoleAndDb(barrier, shutdownMonitor, this.testResultQueues, databaseConnectionProvider.getConnection())
                 : ResultOutputter.outputter(barrier, shutdownMonitor, this.testResultQueues);
         this.testSuiteRunner = (config.doOutputToDatabase)
-                ? TestSuiteRunner.withDatabaseWriter(barrier, lifecycleListener, shutdownMonitor, this.testSuiteQueue, this.testInfoQueues, databaseConnectionProvider.getConnection())
-                : TestSuiteRunner.withOutgoingQueue(barrier, lifecycleListener, shutdownMonitor, this.testSuiteQueue, this.testInfoQueues);
+                ? TestSuiteRunner.withDatabaseWriter(barrier, lifecycleListener, shutdownMonitor, this.runSuiteRequestSubmissionQueue, this.testInfoQueues, databaseConnectionProvider.getConnection())
+                : TestSuiteRunner.withOutgoingQueue(barrier, lifecycleListener, shutdownMonitor, this.runSuiteRequestSubmissionQueue, this.testInfoQueues);
         this.state = State.INIT;
 
-        CommunicationHolder.initialize(this.testSuiteQueue);
+        CommunicationHolder.initialize(this.runSuiteRequestSubmissionQueue);
         LOGGER.log("All life-cycled components initialized.");
     }
 
@@ -158,7 +158,7 @@ public final class LifecycleComponentManager {
         for (CloseableBlockingQueue<TestInfo> testQueue : this.testInfoQueues) {
             testQueue.close();
         }
-        this.testSuiteQueue.close();
+        this.runSuiteRequestSubmissionQueue.close();
     }
 
     private void shutdownExecutors() {
