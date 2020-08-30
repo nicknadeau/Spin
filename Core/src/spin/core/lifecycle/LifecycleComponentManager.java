@@ -72,7 +72,13 @@ public final class LifecycleComponentManager {
         CyclicBarrier barrier = new CyclicBarrier(config.numExecutorThreads + 3);
         this.runSuiteRequestSubmissionQueue = CloseableBlockingQueue.withCapacity(config.incomingSuiteQueueCapacity);
 
-        this.server = Server.forHostAndRandomizedPort(barrier, "127.0.0.1", lifecycleListener, shutdownMonitor);
+        this.server = Server.Builder.newBuilder()
+                .forHost("127.0.0.1")
+                .withBarrier(barrier)
+                .withLifecycleListener(lifecycleListener)
+                .withShutdownMonitor(shutdownMonitor)
+                .build();
+
         this.testInfoQueues = createTestQueues(config);
         this.testResultQueues = createTestResultQueues(config);
         this.testExecutors = createExecutors(config, this.testInfoQueues, this.testResultQueues, barrier, shutdownMonitor);
