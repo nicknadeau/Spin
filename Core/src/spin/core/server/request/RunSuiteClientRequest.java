@@ -1,7 +1,7 @@
 package spin.core.server.request;
 
 import spin.core.server.session.RequestSessionContext;
-import spin.core.server.type.ResponseEvent;
+import spin.core.util.ObjectChecker;
 
 /**
  * A client request to run a test suite.
@@ -10,30 +10,17 @@ public final class RunSuiteClientRequest implements ClientRequest {
     private final String baseDirectory;
     private final String matcher;
     private final String[] dependencies;
-    private final ResponseEvent responseEvent;
     private RequestSessionContext sessionContext = null;
 
-    private RunSuiteClientRequest(String baseDirectory, String matcher, String[] dependencies, ResponseEvent responseEvent) {
+    private RunSuiteClientRequest(String baseDirectory, String matcher, String[] dependencies) {
         this.baseDirectory = baseDirectory;
         this.matcher = matcher;
         this.dependencies = dependencies;
-        this.responseEvent = responseEvent;
     }
 
-    public static RunSuiteClientRequest from(String baseDirectory, String matcher, String[] dependencies, ResponseEvent responseEvent) {
-        if (baseDirectory == null) {
-            throw new NullPointerException("baseDirectory must be non-null.");
-        }
-        if (matcher == null) {
-            throw new NullPointerException("matcher must be non-null.");
-        }
-        if (dependencies == null) {
-            throw new NullPointerException("dependencies must be non-null.");
-        }
-        if (responseEvent == null) {
-            throw new NullPointerException("responseEvent must be non-null.");
-        }
-        return new RunSuiteClientRequest(baseDirectory, matcher, dependencies, responseEvent);
+    public static RunSuiteClientRequest from(String baseDirectory, String matcher, String[] dependencies) {
+        ObjectChecker.assertNonNull(baseDirectory, matcher, dependencies);
+        return new RunSuiteClientRequest(baseDirectory, matcher, dependencies);
     }
 
     public String getBaseDirectory() {
@@ -46,10 +33,6 @@ public final class RunSuiteClientRequest implements ClientRequest {
 
     public String[] getDependencies() {
         return this.dependencies;
-    }
-
-    public ResponseEvent getResponseEvent() {
-        return this.responseEvent;
     }
 
     public RequestSessionContext getSessionContext() {
@@ -83,7 +66,6 @@ public final class RunSuiteClientRequest implements ClientRequest {
         return this.getClass().getSimpleName() + " { base dir: " + this.baseDirectory
                 + ", matcher: " + this.matcher
                 + ", num dependencies: " + this.dependencies.length
-                + ", respond when: " + this.responseEvent.asString
                 + ", " + (this.sessionContext == null ? "no context bound" : "context is bound") + " }";
     }
 }

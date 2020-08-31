@@ -1,4 +1,4 @@
-package spin.core.server.type;
+package spin.core.type;
 
 public final class Result<D> {
     private final boolean success;

@@ -1,12 +1,13 @@
 package spin.core.singleuse.output;
 
 import spin.core.server.session.RequestSessionContext;
-import spin.core.server.type.RunSuiteResponse;
+import spin.core.server.response.RunSuiteResponse;
 import spin.core.singleuse.execution.TestResult;
 import spin.core.singleuse.lifecycle.LifecycleListener;
-import spin.core.singleuse.lifecycle.ShutdownMonitor;
+import spin.core.singleuse.lifecycle.PanicOnlyMonitor;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
+import spin.core.util.ObjectChecker;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -27,21 +28,13 @@ import java.util.concurrent.TimeUnit;
 public final class ResultOutputter implements Runnable {
     private static final Logger LOGGER = Logger.forClass(ResultOutputter.class);
     private final CyclicBarrier barrier;
-    private final ShutdownMonitor shutdownMonitor;
+    private final PanicOnlyMonitor shutdownMonitor;
     private final List<CloseableBlockingQueue<TestResult>> incomingResultQueues;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
 
-    private ResultOutputter(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
-        if (barrier == null) {
-            throw new NullPointerException("barrier must be non-null.");
-        }
-        if (shutdownMonitor == null) {
-            throw new NullPointerException("shutdownMonitor must be non-null.");
-        }
-        if (incomingResultQueues == null) {
-            throw new NullPointerException("incomingResultQueues must be non-null.");
-        }
+    private ResultOutputter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
+        ObjectChecker.assertNonNull(barrier, shutdownMonitor, incomingResultQueues);
         this.barrier = barrier;
         this.shutdownMonitor = shutdownMonitor;
         this.incomingResultQueues = incomingResultQueues;
@@ -57,7 +50,7 @@ public final class ResultOutputter implements Runnable {
      * @param incomingResultQueues The queues that test results may be coming in on asynchronously.
      * @return the new outputter.
      */
-    public static ResultOutputter outputter(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
+    public static ResultOutputter outputter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
         return new ResultOutputter(barrier, shutdownMonitor, incomingResultQueues, null);
     }
 
@@ -73,10 +66,8 @@ public final class ResultOutputter implements Runnable {
      * @param dbConnection The database connection.
      * @return the new outputter.
      */
-    public static ResultOutputter outputterToConsoleAndDb(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
-        if (dbConnection == null) {
-            throw new NullPointerException("dbConnection must be non-null.");
-        }
+    public static ResultOutputter outputterToConsoleAndDb(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
+        ObjectChecker.assertNonNull(dbConnection);
         return new ResultOutputter(barrier, shutdownMonitor, incomingResultQueues, dbConnection);
     }
 
@@ -236,7 +227,8 @@ public final class ResultOutputter implements Runnable {
     }
 
     private static void sendResponse(RequestSessionContext sessionContext, RunSuiteResponse response) throws ClosedChannelException {
-        sessionContext.clientSession.setResponse(response.toJsonString() + "\n");
+        sessionContext.clientSession.putServerResponse(response.toJsonString() + "\n");
+        sessionContext.clientSession.terminateSession();
         sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);
         sessionContext.selector.wakeup();
     }

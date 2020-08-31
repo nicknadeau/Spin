@@ -4,18 +4,29 @@
     <property name="workspace-parent" value=".."/>
     <property name="workspace" value="."/>
     <property name="source" value="${workspace}/src"/>
+    <property name="test" value="${workspace}/test"/>
     <property name="dependencies-global" value="${workspace-parent}/lib"/>
     <property name="dependencies" value="${workspace}/lib"/>
     <property name="build-dir" value="${workspace}/build"/>
     <property name="built-sources" value="${build-dir}/main"/>
+    <property name="built-tests" value="${build-dir}/test"/>
     <property name="dist" value="${workspace}/dist"/>
+    <property name="test-reports" value="${workspace}/test_reports"/>
 
     <path id="classpath">
 	    <pathelement location="${dependencies-global}/junit-4.12.jar"/>
 	    <pathelement location="${dependencies}/gson-2.8.6.jar"/>
+	    <pathelement location="${dependencies}/camel-test-3.4.3.jar"/>
+    </path>
+
+    <path id="test-classpath">
+        <pathelement location="${dependencies-global}/junit-4.12.jar"/>
+        <pathelement location="${dependencies-global}/hamcrest-all-1.3.jar"/>
     </path>
 
     <target name="clean-build-core" depends="clean, build-core"/>
+
+    <target name="clean-test" depends="clean, build-core, build-test, test"/>
 
     <target name="build-core">
         <mkdir dir="${built-sources}"/>
@@ -37,9 +48,37 @@
         <echo message="Newly built jar can be found in directory: ${dist}/"/>
     </target>
 
+    <target name="build-test">
+        <mkdir dir="${built-tests}"/>
+        <javac debug="true" debuglevel="source,lines,vars" includeantruntime="false" release="9" srcdir="${test}" destdir="${built-tests}" includes="**/*.java,module-info.java">
+            <classpath>
+                <path refid="test-classpath"/>
+                <pathelement location="${built-sources}"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="test">
+        <mkdir dir="${test-reports}" />
+        <junit printsummary="on" haltonfailure="true" fork="true" dir="${workspace}">
+            <classpath>
+                <path refid="classpath"/>
+                <path refid="test-classpath"/>
+                <pathelement location="${built-tests}"/>
+                <pathelement location="${built-sources}"/>
+            </classpath>
+            <formatter type="plain" usefile="false" />
+            <formatter type="xml" />
+            <batchtest todir="${test-reports}">
+                <fileset dir="${test}" includes="**/*Test.java" />
+            </batchtest>
+        </junit>
+    </target>
+
     <target name="clean">
         <delete dir="${build-dir}"/>
         <delete dir="${dist}"/>
+        <delete dir="${test-reports}"/>
     </target>
 
 </project>

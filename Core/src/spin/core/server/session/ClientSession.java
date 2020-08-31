@@ -1,104 +1,112 @@
 package spin.core.server.session;
 
+import spin.core.type.CircularByteBuffer;
+import spin.core.util.ObjectChecker;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
+/**
+ * A class that holds session-related information for a server-client session. In particular, this class holds onto all
+ * of the client requests and server responses to be written or read from the sockets. This object also carries the
+ * notion of the session being terminated, which is triggered by the server, and is used to determine when a socket
+ * connection should be closed.
+ *
+ * Each client session has a unique integer id associated with it. These ids are guaranteed to be unique within the
+ * same JVM context unless all possible integer values are exhausted.
+ */
 public final class ClientSession {
-    private static final int REQUEST_BUFFER_SIZE = 5;
-    private static final int MAX_REQUEST_SIZE = 65_536;
     private static int ids = 0;
+    private final CircularByteBuffer clientRequestBuffer;
+    private final CircularByteBuffer serverResponseBuffer;
+    private boolean isSessionTerminated = false;
     public final int id = ids++;
-    private ByteBuffer requestBuffer = ByteBuffer.allocate(REQUEST_BUFFER_SIZE);
-    private StringBuilder requestBuilder = new StringBuilder();
-    private int numRequestBytesReadTotal = 0;
-    private String request = null;
-    private ByteBuffer response = null;
-    private int numResponseBytesToWrite = -1;
-    private boolean isComplete = false;
 
-    public boolean readRequest(SocketChannel socketChannel) throws IOException {
-        if (socketChannel == null) {
-            throw new NullPointerException("socketChannel must be non-null.");
-        }
-        if (this.request != null) {
-            throw new IllegalStateException("Cannot read: request has already been fully read.");
-        }
-
-        int numBytesRead = socketChannel.read(this.requestBuffer);
-        if (numBytesRead > 0) {
-
-            int endingIndex = numBytesRead;
-            boolean foundNewline = false;
-            for (int i = 0; i < numBytesRead; i++) {
-                if (this.requestBuffer.array()[i] == '\n') {
-                    endingIndex = i;
-                    foundNewline = true;
-                    break;
-                }
-            }
-
-            this.numRequestBytesReadTotal += endingIndex;
-            if (this.numRequestBytesReadTotal > MAX_REQUEST_SIZE) {
-                throw new IllegalArgumentException("Cannot read: request has exceeded capacity.");
-            }
-
-            this.requestBuilder.append(new String(Arrays.copyOf(this.requestBuffer.array(), endingIndex), StandardCharsets.UTF_8));
-            if (foundNewline) {
-                this.request = this.requestBuilder.toString();
-                this.requestBuffer = null;
-                this.requestBuilder = null;
-                return true;
-            } else {
-                this.requestBuffer.compact();
-                return false;
-            }
-        } else {
-            return false;
-        }
+    private ClientSession(int requestBufferCapacity, int responseBufferCapacity) {
+        this.clientRequestBuffer = CircularByteBuffer.withCapacity(requestBufferCapacity);
+        this.serverResponseBuffer = CircularByteBuffer.withCapacity(responseBufferCapacity);
     }
 
-    public boolean isRequestRead() {
-        return this.request != null;
+    public static ClientSession withCapacities(int requestBufferCapacity, int responseBufferCapacity) {
+        return new ClientSession(requestBufferCapacity, responseBufferCapacity);
     }
 
-    public String getRequest() {
-        return this.request;
+    /**
+     * Writes however many bytes were able to be read from the specified socket into this session object so that they
+     * can be gotten at a later time as a complete request.
+     *
+     * @param socketChannel The socket to read the bytes from.
+     */
+    public void writeRequestFromSocket(SocketChannel socketChannel) throws IOException {
+        ObjectChecker.assertNonNull(socketChannel);
+
+        //TODO: byte buffer position?
+        byte[] bytes = new byte[this.clientRequestBuffer.availableSpace()];
+        int numBytesRead = socketChannel.read(ByteBuffer.wrap(bytes));
+        this.clientRequestBuffer.writeBytes(Arrays.copyOf(bytes, numBytesRead));
     }
 
-    public void setResponse(String response) {
-        if (this.response != null) {
-            throw new IllegalStateException("Cannot set response: response has already been set.");
+    /**
+     * Returns the next client request in this session object if one exists or {@code null} otherwise.
+     *
+     * @return the next client object or null if none.
+     */
+    public String getNextClientRequest() {
+        byte[] bytes = this.clientRequestBuffer.readBytesUpToIfPresent((byte) '\n');
+        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Saves the specified server response to this session object so that it can be written to a socket at a later time.
+     *
+     * @param response The response.
+     */
+    public void putServerResponse(String response) {
+        ObjectChecker.assertNonNull(response);
+
+        this.serverResponseBuffer.writeBytes(response.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Attempts to write the server response to the specified socket. This method may fail to write the complete
+     * response to the socket. If so, the underlying buffer holding the response will be non-empty and the session,
+     * even if marked to be terminated by the server, will not return true when the {@code isSessionTerminated()}
+     * method is invoked. Thus, this invariant can be used to determine when to stop invoking this method and when the
+     * full response has been written.
+     *
+     * This holds true if multiple responses are present.
+     *
+     * @param channel The socket to write to.
+     */
+    public void writeResponseToSocket(SocketChannel channel) throws IOException {
+        byte[] bytes = this.serverResponseBuffer.readBytesUpToIfPresent((byte) '\n');
+        if (bytes == null) {
+            throw new IllegalStateException("Cannot write response: buffer contains no response.");
         }
 
-        this.response = ByteBuffer.wrap(response.getBytes(StandardCharsets.UTF_8));
-        this.numResponseBytesToWrite = this.response.array().length;
-    }
-
-    public boolean writeResponse(SocketChannel socketChannel) throws IOException {
-        if (this.response == null) {
-            throw new IllegalStateException("Cannot write response: no response has been set.");
-        }
-
-        int numBytesWritten = socketChannel.write(this.response);
-        this.numResponseBytesToWrite -= numBytesWritten;
-
-        if (this.numResponseBytesToWrite > 0) {
-            this.response.compact();
-            return false;
-        } else {
-            this.response = null;
-            return true;
+        //TODO: byte buffer position?
+        int numBytesWritten = channel.write(ByteBuffer.wrap(bytes));
+        if (numBytesWritten < bytes.length) {
+            this.serverResponseBuffer.rollbackReadBy(bytes.length - numBytesWritten);
         }
     }
 
-    public void setSessionComplete() {
-        this.isComplete = true;
+    /**
+     * Signals that the session is over.
+     */
+    public void terminateSession() {
+        this.isSessionTerminated = true;
     }
 
-    public boolean isSessionComplete() {
-        return this.isComplete;
+    /**
+     * Returns {@code true} if and only if the session is over.
+     *
+     * @return whether or not the session is over.
+     */
+    public boolean isSessionTerminated() {
+        return this.isSessionTerminated && this.serverResponseBuffer.isEmpty();
     }
 }

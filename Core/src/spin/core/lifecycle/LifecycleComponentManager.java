@@ -1,17 +1,19 @@
 package spin.core.lifecycle;
 
+import spin.core.LongLivedEntryPoint;
 import spin.core.server.Server;
+import spin.core.server.request.parse.JsonClientRequestParser;
 import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.singleuse.execution.TestExecutor;
 import spin.core.singleuse.execution.TestInfo;
 import spin.core.singleuse.execution.TestResult;
-import spin.core.singleuse.lifecycle.LifecycleListener;
-import spin.core.singleuse.lifecycle.ShutdownMonitor;
+import spin.core.singleuse.lifecycle.*;
 import spin.core.singleuse.output.DatabaseConnectionProvider;
 import spin.core.singleuse.output.ResultOutputter;
 import spin.core.singleuse.runner.TestSuiteRunner;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
+import spin.core.util.ObjectChecker;
 
 import java.io.File;
 import java.io.IOException;
@@ -44,18 +46,10 @@ public final class LifecycleComponentManager {
         return new LifecycleComponentManager();
     }
 
-    void initializeAllComponents(ShutdownMonitor shutdownMonitor, LifecycleListener lifecycleListener, LifecycleComponentConfig config) throws IOException, SQLException {
+    ListenOnlyMonitor initializeAllComponents(LifecycleComponentConfig config) throws IOException, SQLException {
+        ObjectChecker.assertNonNull(config);
         if (this.state != State.PRE_INIT) {
             throw new IllegalStateException("Cannot initialize components: components are already initialized.");
-        }
-        if (shutdownMonitor == null) {
-            throw new NullPointerException("shutdownMonitor must be non-null.");
-        }
-        if (lifecycleListener == null) {
-            throw new NullPointerException("lifecycleListener must be non-null.");
-        }
-        if (config == null) {
-            throw new NullPointerException("lifecycleComponentConfig must be non-null.");
         }
 
         LOGGER.log("Initializing all life-cycled components...");
@@ -72,26 +66,32 @@ public final class LifecycleComponentManager {
         CyclicBarrier barrier = new CyclicBarrier(config.numExecutorThreads + 3);
         this.runSuiteRequestSubmissionQueue = CloseableBlockingQueue.withCapacity(config.incomingSuiteQueueCapacity);
 
+        ShutdownMonitor shutdownMonitor = new ShutdownMonitor();
+        NotifyOnlyMonitor notifyMonitor = NotifyOnlyMonitor.wrapForNotificationsOnly(shutdownMonitor);
+        PanicOnlyMonitor panicMonitor = PanicOnlyMonitor.wrapForPanicsOnly(shutdownMonitor);
+
         this.server = Server.Builder.newBuilder()
                 .forHost("127.0.0.1")
                 .withBarrier(barrier)
-                .withLifecycleListener(lifecycleListener)
-                .withShutdownMonitor(shutdownMonitor)
+                .withShutdownMonitor(notifyMonitor)
+                .usingClientRequestParser(new JsonClientRequestParser())
                 .build();
 
         this.testInfoQueues = createTestQueues(config);
         this.testResultQueues = createTestResultQueues(config);
-        this.testExecutors = createExecutors(config, this.testInfoQueues, this.testResultQueues, barrier, shutdownMonitor);
+        this.testExecutors = createExecutors(config, this.testInfoQueues, this.testResultQueues, barrier, panicMonitor);
         this.resultOutputter = (config.doOutputToDatabase)
-                ? ResultOutputter.outputterToConsoleAndDb(barrier, shutdownMonitor, this.testResultQueues, databaseConnectionProvider.getConnection())
-                : ResultOutputter.outputter(barrier, shutdownMonitor, this.testResultQueues);
+                ? ResultOutputter.outputterToConsoleAndDb(barrier, panicMonitor, this.testResultQueues, databaseConnectionProvider.getConnection())
+                : ResultOutputter.outputter(barrier, panicMonitor, this.testResultQueues);
         this.testSuiteRunner = (config.doOutputToDatabase)
-                ? TestSuiteRunner.withDatabaseWriter(barrier, lifecycleListener, shutdownMonitor, this.runSuiteRequestSubmissionQueue, this.testInfoQueues, databaseConnectionProvider.getConnection())
-                : TestSuiteRunner.withOutgoingQueue(barrier, lifecycleListener, shutdownMonitor, this.runSuiteRequestSubmissionQueue, this.testInfoQueues);
+                ? TestSuiteRunner.withDatabaseWriter(barrier, notifyMonitor, this.runSuiteRequestSubmissionQueue, this.testInfoQueues, databaseConnectionProvider.getConnection())
+                : TestSuiteRunner.withOutgoingQueue(barrier, notifyMonitor, this.runSuiteRequestSubmissionQueue, this.testInfoQueues);
+        LongLivedEntryPoint.setPanicMonitor(panicMonitor);
         this.state = State.INIT;
-
+        
         CommunicationHolder.initialize(this.runSuiteRequestSubmissionQueue);
         LOGGER.log("All life-cycled components initialized.");
+        return ListenOnlyMonitor.wrapForListeningOnly(shutdownMonitor);
     }
 
     void startAllComponents() throws IOException {
@@ -199,7 +199,7 @@ public final class LifecycleComponentManager {
         return queues;
     }
 
-    private List<TestExecutor> createExecutors(LifecycleComponentConfig config, List<CloseableBlockingQueue<TestInfo>> testsQueues, List<CloseableBlockingQueue<TestResult>> resultsQueues, CyclicBarrier barrier, ShutdownMonitor shutdownMonitor) {
+    private List<TestExecutor> createExecutors(LifecycleComponentConfig config, List<CloseableBlockingQueue<TestInfo>> testsQueues, List<CloseableBlockingQueue<TestResult>> resultsQueues, CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor) {
         if (testsQueues.size() != resultsQueues.size()) {
             throw new IllegalArgumentException("num tests queues (" + testsQueues.size() + ") != num results queues (" + resultsQueues.size() + ").");
         }

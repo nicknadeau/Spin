@@ -1,9 +1,10 @@
 package spin.core.singleuse.execution;
 
-import spin.core.singleuse.lifecycle.ShutdownMonitor;
+import spin.core.singleuse.lifecycle.PanicOnlyMonitor;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
 import spin.core.singleuse.util.ThreadLocalPrintStream;
+import spin.core.util.ObjectChecker;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
@@ -22,25 +23,14 @@ public final class TestExecutor implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestExecutor.class);
     private final Object monitor = new Object();
     private final CyclicBarrier barrier;
-    private final ShutdownMonitor shutdownMonitor;
+    private final PanicOnlyMonitor shutdownMonitor;
     private final CloseableBlockingQueue<TestInfo> tests;
     private final CloseableBlockingQueue<TestResult> results;
     private final boolean writeToDb;
     private volatile boolean isAlive = true;
 
-    private TestExecutor(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
-        if (barrier == null) {
-            throw new NullPointerException("barrier must be non-null.");
-        }
-        if (shutdownMonitor == null) {
-            throw new NullPointerException("shutdownMonitor must be non-null.");
-        }
-        if (tests == null) {
-            throw new NullPointerException("tests must be non-null.");
-        }
-        if (results == null) {
-            throw new NullPointerException("results must be non-null.");
-        }
+    private TestExecutor(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
+        ObjectChecker.assertNonNull(barrier, shutdownMonitor, tests, results);
         this.barrier = barrier;
         this.shutdownMonitor = shutdownMonitor;
         this.tests = tests;
@@ -61,7 +51,7 @@ public final class TestExecutor implements Runnable {
      * @param writeToDb Whether or not database writes are enabled for result recording.
      * @return the new executor.
      */
-    public static TestExecutor withQueues(CyclicBarrier barrier, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
+    public static TestExecutor withQueues(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, CloseableBlockingQueue<TestInfo> tests, CloseableBlockingQueue<TestResult> results, boolean writeToDb) {
         return new TestExecutor(barrier, shutdownMonitor, tests, results, writeToDb);
     }
 

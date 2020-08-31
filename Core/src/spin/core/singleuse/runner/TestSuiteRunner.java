@@ -2,12 +2,12 @@ package spin.core.singleuse.runner;
 
 import spin.core.server.session.RequestSessionContext;
 import spin.core.server.request.RunSuiteClientRequest;
-import spin.core.server.type.RunSuiteResponse;
+import spin.core.server.response.RunSuiteResponse;
 import spin.core.singleuse.execution.TestInfo;
-import spin.core.singleuse.lifecycle.LifecycleListener;
-import spin.core.singleuse.lifecycle.ShutdownMonitor;
+import spin.core.singleuse.lifecycle.NotifyOnlyMonitor;
 import spin.core.singleuse.util.CloseableBlockingQueue;
 import spin.core.singleuse.util.Logger;
+import spin.core.util.ObjectChecker;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,32 +33,16 @@ public final class TestSuiteRunner implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestSuiteRunner.class);
     private static int suiteIds = 0;
     private final Object monitor = new Object();
-    private final ShutdownMonitor shutdownMonitor;
+    private final NotifyOnlyMonitor shutdownMonitor;
     private final CyclicBarrier barrier;
-    private final LifecycleListener lifecycleListener;
     private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
     private final CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
 
-    private TestSuiteRunner(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
-        if (barrier == null) {
-            throw new NullPointerException("barrier must be non-null.");
-        }
-        if (listener == null) {
-            throw new NullPointerException("listener must be non-null.");
-        }
-        if (shutdownMonitor == null) {
-            throw new NullPointerException("shutdownMonitor must be non-null.");
-        }
-        if (incomingRunSuiteRequests == null) {
-            throw new NullPointerException("incomingRunSuiteRequests must be non-null.");
-        }
-        if (outgoingTestQueues == null) {
-            throw new NullPointerException("outgoingTestQueues must be non-null.");
-        }
+    private TestSuiteRunner(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+        ObjectChecker.assertNonNull(barrier, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues);
         this.barrier = barrier;
-        this.lifecycleListener = listener;
         this.shutdownMonitor = shutdownMonitor;
         this.incomingRunSuiteRequests = incomingRunSuiteRequests;
         this.outgoingTestQueues = outgoingTestQueues;
@@ -70,14 +54,13 @@ public final class TestSuiteRunner implements Runnable {
      * to add tests to these queues fairly so that they each receive a roughly equal load.
      *
      * @param barrier The barrier to wait on before running.
-     * @param listener The life-cycle listener.
      * @param shutdownMonitor The shutdown monitor.
      * @param incomingRunSuiteRequests The queue in which test suite requests are loaded into.
      * @param outgoingTestQueues The queues to load the tests into.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
-        return new TestSuiteRunner(barrier, listener, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues, null);
+    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+        return new TestSuiteRunner(barrier, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues, null);
     }
 
     /**
@@ -88,18 +71,15 @@ public final class TestSuiteRunner implements Runnable {
      * database writer.
      *
      * @param barrier The barrier to wait on before running.
-     * @param listener The life-cycle listener.
      * @param shutdownMonitor The shutdown monitor.
      * @param incomingRunSuiteRequests The queue in which test suite requests are loaded into.
      * @param outgoingTestQueues The queues to load the tests into.
      * @param dbConnection The database connection.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
-        if (dbConnection == null) {
-            throw new NullPointerException("dbConnection must be non-null.");
-        }
-        return new TestSuiteRunner(barrier, listener, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues, dbConnection);
+    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+        ObjectChecker.assertNonNull(dbConnection);
+        return new TestSuiteRunner(barrier, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues, dbConnection);
     }
 
     @Override
@@ -208,7 +188,7 @@ public final class TestSuiteRunner implements Runnable {
             sendResponse(testSuite.sessionContext, RunSuiteResponse.successful(testSuite.suiteId));
 
             LOGGER.log("Notifying listener suite is done due to it having zero tests.");
-            this.lifecycleListener.notifyDone();
+            this.shutdownMonitor.requestGracefulShutdown();
         } else {
             int index = 0;
             while (index < testInfos.size()) {
@@ -329,7 +309,8 @@ public final class TestSuiteRunner implements Runnable {
     }
 
     private static void sendResponse(RequestSessionContext sessionContext, RunSuiteResponse response) throws ClosedChannelException {
-        sessionContext.clientSession.setResponse(response.toJsonString() + "\n");
+        sessionContext.clientSession.putServerResponse(response.toJsonString() + "\n");
+        sessionContext.clientSession.terminateSession();
         sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);
         sessionContext.selector.wakeup();
     }

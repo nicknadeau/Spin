@@ -19,10 +19,7 @@ spin_cmd='./spin-singleuse'
 spin_jar='spin-core.jar'
 json_parser='json_parser.py'
 json_parser_orig='spin/json_parser.py'
-postgres_jar='postgresql-42.2.12.jar'
-junit_jar='junit-4.12.jar'
-hamcrest_jar='hamcrest-all-1.3.jar'
-gson_jar='gson-2.8.6.jar'
+dependencies='dependencies'
 db_config='db_config.txt'
 config_dir='config'
 spin_log_dir='spin_logs'
@@ -100,8 +97,9 @@ function clean() {
 	clean_for_test
 	rm output.txt &> /dev/null
 	rm $json_parser &> /dev/null
-	rm *.jar &> /dev/null
 	rm $spin &> /dev/null
+	rm *.jar &> /dev/null
+	rm -rf $dependencies &> /dev/null
 	rm -rf $config_dir &> /dev/null
 	rm -rf "$spin_log_dir" &> /dev/null
 	rm $log &> /dev/null
@@ -118,10 +116,9 @@ function setup() {
 	cp ../client/$spin . && \
 	cp $json_parser_orig . && \
 	cp ../Core/dist/$spin_jar . && \
-	cp ../Core/lib/$postgres_jar . && \
-	cp ../Core/lib/$gson_jar . && \
-	cp ../lib/$junit_jar . && \
-	cp ../Example/lib/$hamcrest_jar . && \
+	mkdir $dependencies && \
+	cp ../Core/lib/* $dependencies &&\
+	cp ../lib/* $dependencies && \
 	mkdir $config_dir && \
 	cp ../config/$db_config $config_dir && \
 	cd $curr_dir && \
@@ -178,7 +175,7 @@ function run_spin() {
 function validate_results() {
 	if [ "$#" -ne 1 ]
 	then
-		echo "[$filename]: USAGE:: validate_results <suite id>"
+		echo "[$filename]: USAGE:: validate_results <spin result>"
 		return 1
 	fi
 	eval $autogen_cmd --validate $gen_file ./$config_dir/$db_config "$1"
@@ -199,14 +196,14 @@ function test_multi_class_single_test() {
 		return 1
 	fi
 
-	suite_id="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" "$junit_jar" "$hamcrest_jar")"
+	suite_result="$(run_spin "build/$name/test" "$any_class_matcher" "$spin_log_dir/$name" $dependencies/*)"
 	if [ "$?" -ne 0 ]
 	then
 		print_spin_fail_msg "$name"
 		return 1
 	fi
 
-	validate_results $suite_id
+	validate_results "$suite_result"
 	if [ "$?" -eq 0 ]
 	then
 		print_success_msg "$name"

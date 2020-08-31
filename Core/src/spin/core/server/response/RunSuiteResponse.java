@@ -1,8 +1,8 @@
-package spin.core.server.type;
+package spin.core.server.response;
 
 import com.google.gson.JsonObject;
 
-public final class RunSuiteResponse {
+public final class RunSuiteResponse implements ServerResponse {
     private final boolean success;
     private final int suiteId;
     private final String error;
@@ -21,6 +21,7 @@ public final class RunSuiteResponse {
         return new RunSuiteResponse(false, -1, error);
     }
 
+    @Override
     public String toJsonString() {
         JsonObject response = new JsonObject();
         response.addProperty("is_success", this.success);

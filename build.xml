@@ -8,7 +8,7 @@
 
     <target name="build-core">
         <echo message="Building Core module..."/>
-        <ant inheritAll="false" antfile="${coreModule}/build.xml" target="build-core">
+        <ant inheritAll="false" antfile="${coreModule}/build.xml" target="clean-build-core">
             <property name="compile.debug" value="${compile.debug}"/>
         </ant>
     </target>
@@ -16,6 +16,13 @@
     <target name="build-example-raw">
         <echo message="Building Example module..."/>
         <ant inheritAll="false" antfile="${exampleModule}/build.xml" target="clean-build-raw">
+            <property name="compile.debug" value="${compile.debug}"/>
+        </ant>
+    </target>
+
+    <target name="test-core">
+        <echo message="Running Core module tests..."/>
+        <ant inheritAll="false" antfile="${coreModule}/build.xml" target="clean-test">
             <property name="compile.debug" value="${compile.debug}"/>
         </ant>
     </target>

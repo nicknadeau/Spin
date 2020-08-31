@@ -126,12 +126,8 @@ do
 done
 dependencies="$dependencies]"
 
-if [ "$persist" = true ]
-then
-	classpath='spin-core.jar:junit-4.12.jar:postgresql-42.2.12.jar:gson-2.8.6.jar'
-else
-	classpath='spin-core.jar:junit-4.12.jar:gson-2.8.6.jar'
-fi
+#TODO: rather than expect a 'dependencies' dir this should be configurable.
+classpath='spin-core.jar:'dependencies/*
 
 # Set the database config file path property here. We hardcode this. Note this is only used when -p is given.
 dbconfig_property='-Ddb_config_path=./config/db_config.txt'

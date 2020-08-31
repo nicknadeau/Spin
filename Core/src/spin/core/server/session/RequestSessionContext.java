@@ -1,8 +1,14 @@
 package spin.core.server.session;
 
+import spin.core.util.ObjectChecker;
+
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 
+/**
+ * A class that holds contextual data or objects related to the client-server session in which some client request has
+ * been received by the server.
+ */
 public final class RequestSessionContext {
     public final Selector selector;
     public final SocketChannel socketChannel;
@@ -15,16 +21,7 @@ public final class RequestSessionContext {
     }
 
     public static RequestSessionContext socketContext(Selector selector, SocketChannel socket, ClientSession session) {
-        if (selector == null) {
-            throw new NullPointerException("selector must be non-null.");
-        }
-        if (socket == null) {
-            throw new NullPointerException("socket must be non-null.");
-        }
-        if (session == null) {
-            throw new NullPointerException("session must be non-null.");
-        }
-
+        ObjectChecker.assertNonNull(selector, socket, session);
         return new RequestSessionContext(selector, socket, session);
     }
 

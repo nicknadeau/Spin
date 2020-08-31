@@ -3,10 +3,11 @@
 
     <property name="workspace" value="."/>
     <property name="build-dir" value="${workspace}/build"/>
+    <property name="dependencies" value="${workspace}/dependencies"/>
 
     <path id="classpath-test">
-        <pathelement location="${workspace}/junit-4.12.jar"/>
-        <pathelement location="${workspace}/hamcrest-all-1.3.jar"/>
+        <pathelement location="${dependencies}/junit-4.12.jar"/>
+        <pathelement location="${dependencies}/hamcrest-all-1.3.jar"/>
     </path>
 
     <target name="build_tests_and_src" depends="clean-build-dir">
