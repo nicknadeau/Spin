@@ -1,15 +1,15 @@
 package spin.core.server.session;
 
 import spin.core.lifecycle.CommunicationHolder;
-import spin.core.server.type.RequestType;
+import spin.core.server.request.RequestType;
 import spin.core.server.type.ResponseEvent;
-import spin.core.server.type.RunSuiteRequest;
+import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.singleuse.util.Logger;
 
 public final class RequestHandler {
     private static final Logger LOGGER = Logger.forClass(RequestHandler.class);
 
-    public static void handleRequest(RunSuiteRequest runSuiteRequest) throws InterruptedException {
+    public static void handleRequest(RunSuiteClientRequest runSuiteRequest) throws InterruptedException {
         if (runSuiteRequest == null) {
             throw new NullPointerException("runSuiteRequest must be non-null.");
         }

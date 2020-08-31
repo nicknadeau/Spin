@@ -1,10 +1,10 @@
 package spin.core.server.session;
 
 import com.google.gson.*;
-import spin.core.server.type.RequestType;
-import spin.core.server.type.ResponseEvent;
-import spin.core.server.type.Result;
-import spin.core.server.type.RunSuiteRequest;
+import spin.core.server.request.ClientRequest;
+import spin.core.server.request.RequestType;
+import spin.core.server.request.RunSuiteClientRequest;
+import spin.core.server.type.*;
 
 public final class RequestParser {
     private static final String REQUEST_TYPE_KEY = "request_type";
@@ -15,7 +15,7 @@ public final class RequestParser {
     private static final String RESPOND_WHEN_KEY = "respond_when";
     private static final String DEFAULT_MATCHER = ".*\\.class";
 
-    public static Result<RequestHolder> parseRequest(String request) {
+    public static Result<ClientRequest> parseClientRequest(String request) {
         if (request == null) {
             throw new NullPointerException("request must be non-null.");
         }
@@ -62,7 +62,7 @@ public final class RequestParser {
         }
     }
 
-    private static Result<RequestHolder> parseRunSuiteRequest(JsonObject requestBody) {
+    private static Result<ClientRequest> parseRunSuiteRequest(JsonObject requestBody) {
         if (!requestBody.has(BASE_DIR_KEY)) {
             return Result.error(createParseFailureMessage("missing " + BASE_DIR_KEY));
         }
@@ -120,8 +120,7 @@ public final class RequestParser {
             responseEvent = parsedEvent;
         }
 
-        RequestHolder holder = RequestHolder.forRunSuiteRequest(RunSuiteRequest.from(baseDir, matcher, dependencies, responseEvent));
-        return Result.successful(holder);
+        return Result.successful(RunSuiteClientRequest.from(baseDir, matcher, dependencies, responseEvent));
     }
 
     private static String createParseFailureMessage(String cause) {

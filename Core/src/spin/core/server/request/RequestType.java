@@ -1,4 +1,4 @@
-package spin.core.server.type;
+package spin.core.server.request;
 
 public enum RequestType {
     RUN_SUITE("run_suite")

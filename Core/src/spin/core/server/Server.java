@@ -2,11 +2,11 @@ package spin.core.server;
 
 import org.apache.camel.test.AvailablePortFinder;
 import spin.core.exception.UnreachableException;
+import spin.core.server.request.ClientRequest;
+import spin.core.server.request.RequestType;
+import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.server.session.*;
-import spin.core.server.type.RequestType;
-import spin.core.server.type.Result;
-import spin.core.server.type.RunSuiteRequest;
-import spin.core.server.type.RunSuiteResponse;
+import spin.core.server.type.*;
 import spin.core.singleuse.lifecycle.LifecycleListener;
 import spin.core.singleuse.lifecycle.ShutdownMonitor;
 import spin.core.singleuse.util.Logger;
@@ -135,17 +135,17 @@ public final class Server implements Runnable {
             if (clientSession.readRequest(channel)) {
                 System.out.println("Client request from client #" + clientSession.id + ": " + clientSession.getRequest());
 
-                Result<RequestHolder> parseResult = RequestParser.parseRequest(clientSession.getRequest());
+                Result<ClientRequest> parseResult = RequestParser.parseClientRequest(clientSession.getRequest());
                 if (parseResult.isSuccess()) {
                     System.out.println("Request from client #" + clientSession.id + " successfully parsed.");
-                    RequestHolder requestHolder = parseResult.getData();
-                    if (requestHolder.getRequestType() == RequestType.RUN_SUITE) {
-                        RunSuiteRequest runSuiteRequest = requestHolder.asRunSuiteRequest();
+                    ClientRequest clientRequest = parseResult.getData();
+                    if (clientRequest.getType() == RequestType.RUN_SUITE) {
+                        RunSuiteClientRequest runSuiteRequest = (RunSuiteClientRequest) clientRequest;
                         RequestSessionContext context = RequestSessionContext.socketContext(this.selector, channel, clientSession);
                         runSuiteRequest.bindContext(context);
                         RequestHandler.handleRequest(runSuiteRequest);
                     } else {
-                        throw new UnreachableException("unknown request type: " + requestHolder.getRequestType());
+                        throw new UnreachableException("unknown request type: " + clientRequest.getType());
                     }
                 } else {
                     RunSuiteResponse response = RunSuiteResponse.failed(parseResult.getError());

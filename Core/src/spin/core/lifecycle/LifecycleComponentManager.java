@@ -1,7 +1,7 @@
 package spin.core.lifecycle;
 
 import spin.core.server.Server;
-import spin.core.server.type.RunSuiteRequest;
+import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.singleuse.execution.TestExecutor;
 import spin.core.singleuse.execution.TestInfo;
 import spin.core.singleuse.execution.TestResult;
@@ -26,7 +26,7 @@ public final class LifecycleComponentManager {
     private static final Logger LOGGER = Logger.forClass(LifecycleComponentManager.class);
     private enum State { PRE_INIT, INIT, STARTED, STOPPED }
     private State state = State.PRE_INIT;
-    private CloseableBlockingQueue<RunSuiteRequest> runSuiteRequestSubmissionQueue;
+    private CloseableBlockingQueue<RunSuiteClientRequest> runSuiteRequestSubmissionQueue;
     private List<CloseableBlockingQueue<TestInfo>> testInfoQueues;
     private List<CloseableBlockingQueue<TestResult>> testResultQueues;
     private Server server;

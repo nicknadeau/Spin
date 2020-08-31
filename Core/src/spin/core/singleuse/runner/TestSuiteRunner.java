@@ -1,7 +1,7 @@
 package spin.core.singleuse.runner;
 
 import spin.core.server.session.RequestSessionContext;
-import spin.core.server.type.RunSuiteRequest;
+import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.server.type.RunSuiteResponse;
 import spin.core.singleuse.execution.TestInfo;
 import spin.core.singleuse.lifecycle.LifecycleListener;
@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
- * A class that is responsible for receiving a {@link RunSuiteRequest} object and for loading all of the test suite
+ * A class that is responsible for receiving a {@link RunSuiteClientRequest} object and for loading all of the test suite
  * classes, constructing whatever additional information is required, and handing these tests off to any of the outgoing
  * queues it has so that they may be picked up with all the required context by some downstream consumer.
  */
@@ -37,11 +37,11 @@ public final class TestSuiteRunner implements Runnable {
     private final CyclicBarrier barrier;
     private final LifecycleListener lifecycleListener;
     private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
-    private final CloseableBlockingQueue<RunSuiteRequest> incomingRunSuiteRequests;
+    private final CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
 
-    private TestSuiteRunner(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    private TestSuiteRunner(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
         if (barrier == null) {
             throw new NullPointerException("barrier must be non-null.");
         }
@@ -76,7 +76,7 @@ public final class TestSuiteRunner implements Runnable {
      * @param outgoingTestQueues The queues to load the tests into.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
         return new TestSuiteRunner(barrier, listener, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues, null);
     }
 
@@ -95,7 +95,7 @@ public final class TestSuiteRunner implements Runnable {
      * @param dbConnection The database connection.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, LifecycleListener listener, ShutdownMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
         if (dbConnection == null) {
             throw new NullPointerException("dbConnection must be non-null.");
         }
@@ -112,7 +112,7 @@ public final class TestSuiteRunner implements Runnable {
             while (this.isAlive) {
                 try {
                     LOGGER.log("Attempting to fetch next test suite request to load...");
-                    RunSuiteRequest request = this.incomingRunSuiteRequests.poll(5, TimeUnit.MINUTES);
+                    RunSuiteClientRequest request = this.incomingRunSuiteRequests.poll(5, TimeUnit.MINUTES);
                     if (request != null) {
                         LOGGER.log("Got next test suite request to load.");
                         TestSuite testSuite = createTestSuiteFromRequest(request);
@@ -174,7 +174,7 @@ public final class TestSuiteRunner implements Runnable {
         }
     }
 
-    private static TestSuite createTestSuiteFromRequest(RunSuiteRequest runSuiteRequest) throws IOException {
+    private static TestSuite createTestSuiteFromRequest(RunSuiteClientRequest runSuiteRequest) throws IOException {
         File baseDir = new File(runSuiteRequest.getBaseDirectory());
         if (!baseDir.exists()) {
             throw new IllegalStateException("Tests base dir does not exist.");

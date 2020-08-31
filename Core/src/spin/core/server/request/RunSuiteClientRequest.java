@@ -1,22 +1,26 @@
-package spin.core.server.type;
+package spin.core.server.request;
 
 import spin.core.server.session.RequestSessionContext;
+import spin.core.server.type.ResponseEvent;
 
-public final class RunSuiteRequest implements Request {
+/**
+ * A client request to run a test suite.
+ */
+public final class RunSuiteClientRequest implements ClientRequest {
     private final String baseDirectory;
     private final String matcher;
     private final String[] dependencies;
     private final ResponseEvent responseEvent;
     private RequestSessionContext sessionContext = null;
 
-    private RunSuiteRequest(String baseDirectory, String matcher, String[] dependencies, ResponseEvent responseEvent) {
+    private RunSuiteClientRequest(String baseDirectory, String matcher, String[] dependencies, ResponseEvent responseEvent) {
         this.baseDirectory = baseDirectory;
         this.matcher = matcher;
         this.dependencies = dependencies;
         this.responseEvent = responseEvent;
     }
 
-    public static RunSuiteRequest from(String baseDirectory, String matcher, String[] dependencies, ResponseEvent responseEvent) {
+    public static RunSuiteClientRequest from(String baseDirectory, String matcher, String[] dependencies, ResponseEvent responseEvent) {
         if (baseDirectory == null) {
             throw new NullPointerException("baseDirectory must be non-null.");
         }
@@ -29,7 +33,7 @@ public final class RunSuiteRequest implements Request {
         if (responseEvent == null) {
             throw new NullPointerException("responseEvent must be non-null.");
         }
-        return new RunSuiteRequest(baseDirectory, matcher, dependencies, responseEvent);
+        return new RunSuiteClientRequest(baseDirectory, matcher, dependencies, responseEvent);
     }
 
     public String getBaseDirectory() {
@@ -67,6 +71,11 @@ public final class RunSuiteRequest implements Request {
 
     public boolean isContextBound() {
         return this.sessionContext != null;
+    }
+
+    @Override
+    public RequestType getType() {
+        return RequestType.RUN_SUITE;
     }
 
     @Override
