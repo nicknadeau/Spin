@@ -6,7 +6,7 @@ import spin.core.server.request.ClientRequest;
 import spin.core.server.request.RequestType;
 import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.server.session.RequestSessionContext;
-import spin.core.singleuse.util.Logger;
+import spin.core.util.Logger;
 import spin.core.util.ObjectChecker;
 
 /**

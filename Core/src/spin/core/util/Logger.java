@@ -1,4 +1,4 @@
-package spin.core.singleuse.util;
+package spin.core.util;
 
 /**
  * A simple logging utility that can be either enabled or disabled globally.

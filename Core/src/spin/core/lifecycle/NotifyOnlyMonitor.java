@@ -1,4 +1,4 @@
-package spin.core.singleuse.lifecycle;
+package spin.core.lifecycle;
 
 import spin.core.util.ObjectChecker;
 

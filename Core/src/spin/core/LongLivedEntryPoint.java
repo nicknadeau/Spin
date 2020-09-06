@@ -3,9 +3,9 @@ package spin.core;
 import spin.core.lifecycle.LifecycleComponentConfig;
 import spin.core.lifecycle.LifecycleManager;
 import spin.core.type.Result;
-import spin.core.singleuse.lifecycle.PanicOnlyMonitor;
-import spin.core.singleuse.util.Logger;
-import spin.core.singleuse.util.ThreadLocalPrintStream;
+import spin.core.lifecycle.PanicOnlyMonitor;
+import spin.core.util.Logger;
+import spin.core.util.ThreadLocalPrintStream;
 
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicReference;

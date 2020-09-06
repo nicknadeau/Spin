@@ -1,4 +1,4 @@
-package spin.core.singleuse.runner;
+package spin.core.runner;
 
 import spin.core.server.session.RequestSessionContext;
 

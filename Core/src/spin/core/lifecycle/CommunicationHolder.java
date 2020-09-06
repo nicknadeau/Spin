@@ -1,7 +1,7 @@
 package spin.core.lifecycle;
 
 import spin.core.server.request.RunSuiteClientRequest;
-import spin.core.singleuse.util.CloseableBlockingQueue;
+import spin.core.util.CloseableBlockingQueue;
 
 public final class CommunicationHolder {
     private static CommunicationHolder singleton = null;

@@ -1,6 +1,6 @@
 package spin.core.lifecycle;
 
-import spin.core.singleuse.util.Logger;
+import spin.core.util.Logger;
 
 import java.io.*;
 

@@ -1,8 +1,7 @@
 package spin.core.lifecycle;
 
 import spin.core.type.Result;
-import spin.core.singleuse.lifecycle.ListenOnlyMonitor;
-import spin.core.singleuse.util.Logger;
+import spin.core.util.Logger;
 
 import java.util.concurrent.Callable;
 

@@ -1,4 +1,4 @@
-package spin.core.singleuse.util;
+package spin.core.util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;

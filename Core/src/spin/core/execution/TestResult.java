@@ -1,7 +1,7 @@
-package spin.core.singleuse.execution;
+package spin.core.execution;
 
 import spin.core.server.session.RequestSessionContext;
-import spin.core.singleuse.runner.TestSuiteDetails;
+import spin.core.runner.TestSuiteDetails;
 
 import java.lang.reflect.Method;
 

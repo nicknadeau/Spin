@@ -1,12 +1,11 @@
-package spin.core.singleuse.output;
+package spin.core.output;
 
 import spin.core.server.session.RequestSessionContext;
 import spin.core.server.response.RunSuiteResponse;
-import spin.core.singleuse.execution.TestResult;
-import spin.core.singleuse.lifecycle.LifecycleListener;
-import spin.core.singleuse.lifecycle.PanicOnlyMonitor;
-import spin.core.singleuse.util.CloseableBlockingQueue;
-import spin.core.singleuse.util.Logger;
+import spin.core.execution.TestResult;
+import spin.core.lifecycle.PanicOnlyMonitor;
+import spin.core.util.CloseableBlockingQueue;
+import spin.core.util.Logger;
 import spin.core.util.ObjectChecker;
 
 import java.math.BigDecimal;
@@ -23,7 +22,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * The class that is responsible for outputting the test results to the console.
  *
- * This class has a finite amount of work to do and when it is complete it will notify the {@link LifecycleListener}.
+ * This class has a finite amount of work to do and when it is complete it will notify its life-cycle listener via its
+ * {@link PanicOnlyMonitor}.
  */
 public final class ResultOutputter implements Runnable {
     private static final Logger LOGGER = Logger.forClass(ResultOutputter.class);

@@ -1,12 +1,12 @@
-package spin.core.singleuse.runner;
+package spin.core.runner;
 
 import spin.core.server.session.RequestSessionContext;
 import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.server.response.RunSuiteResponse;
-import spin.core.singleuse.execution.TestInfo;
-import spin.core.singleuse.lifecycle.NotifyOnlyMonitor;
-import spin.core.singleuse.util.CloseableBlockingQueue;
-import spin.core.singleuse.util.Logger;
+import spin.core.execution.TestInfo;
+import spin.core.lifecycle.NotifyOnlyMonitor;
+import spin.core.util.CloseableBlockingQueue;
+import spin.core.util.Logger;
 import spin.core.util.ObjectChecker;
 
 import java.io.File;

@@ -1,4 +1,4 @@
-package spin.core.singleuse.output;
+package spin.core.output;
 
 import java.io.*;
 import java.sql.Connection;

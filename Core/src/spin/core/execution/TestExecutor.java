@@ -1,9 +1,9 @@
-package spin.core.singleuse.execution;
+package spin.core.execution;
 
-import spin.core.singleuse.lifecycle.PanicOnlyMonitor;
-import spin.core.singleuse.util.CloseableBlockingQueue;
-import spin.core.singleuse.util.Logger;
-import spin.core.singleuse.util.ThreadLocalPrintStream;
+import spin.core.lifecycle.PanicOnlyMonitor;
+import spin.core.util.CloseableBlockingQueue;
+import spin.core.util.Logger;
+import spin.core.util.ThreadLocalPrintStream;
 import spin.core.util.ObjectChecker;
 
 import java.io.BufferedOutputStream;
