@@ -7,29 +7,29 @@ import java.util.concurrent.Callable;
 
 public final class LifecycleManager implements Callable<Result<Void>> {
     private static final Logger LOGGER = Logger.forClass(LifecycleManager.class);
-    private final LifecycleComponentConfig config;
+    private final LifecycleComponentManager componentManager;
     private volatile boolean isAlive = true;
 
     private LifecycleManager(LifecycleComponentConfig config) {
-        this.config = config;
+        this.componentManager = LifecycleComponentManager.newManager(config);
     }
 
     public static LifecycleManager newManager(LifecycleComponentConfig config) {
-        if (config == null) {
-            throw new NullPointerException("config must be non-null.");
-        }
         return new LifecycleManager(config);
+    }
+
+    public PanicOnlyMonitor getPanicOnlyShutdownMonitor() {
+        return this.componentManager.getPanicOnlyShutdownMonitor();
     }
 
     @Override
     public Result<Void> call() {
-        LifecycleComponentManager lifecycleComponentManager = LifecycleComponentManager.newManager();
-
         Result<Void> result;
         try {
-            ListenOnlyMonitor listenOnlyMonitor = lifecycleComponentManager.initializeAllComponents(this.config);
-            lifecycleComponentManager.startAllComponents();
+            this.componentManager.initializeAllComponents();
+            this.componentManager.startAllComponents();
 
+            ListenOnlyMonitor listenOnlyMonitor = this.componentManager.getListenOnlyShutdownMonitor();
             listenOnlyMonitor.waitUntilCauseForShutdown();
 
             // If there was a panic then display this to the user.
@@ -37,14 +37,14 @@ public final class LifecycleManager implements Callable<Result<Void>> {
                 listenOnlyMonitor.getCauseOfPanic().printStackTrace();
             }
 
-            lifecycleComponentManager.shutdownAllComponents();
-            lifecycleComponentManager.waitForAllComponentsToShutdown();
+            this.componentManager.shutdownAllComponents();
+            this.componentManager.waitForAllComponentsToShutdown();
 
             result = Result.successful(null);
 
         } catch (Throwable e) {
             e.printStackTrace();
-            lifecycleComponentManager.shutdownAllComponents();
+            this.componentManager.shutdownAllComponents();
             result = Result.error("Unexpected error: " + e.getMessage());
         } finally {
             this.isAlive = false;
@@ -60,6 +60,6 @@ public final class LifecycleManager implements Callable<Result<Void>> {
 
     @Override
     public String toString() {
-        return this.getClass().getSimpleName() + " { " + (this.isAlive ? "[running]" : "[shutdown]") + ", config: " + this.config + " }";
+        return this.getClass().getSimpleName() + " { " + (this.isAlive ? "[running]" : "[shutdown]") + " }";
     }
 }

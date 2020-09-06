@@ -8,14 +8,10 @@ import spin.core.util.Logger;
 import spin.core.util.ThreadLocalPrintStream;
 
 import java.util.concurrent.FutureTask;
-import java.util.concurrent.atomic.AtomicReference;
 
 public final class LongLivedEntryPoint {
     private static final Logger LOGGER = Logger.forClass(LongLivedEntryPoint.class);
     private static final int INTER_COMPONENT_QUEUE_CAPACITY = 262_144;
-
-    //TODO: temporary solution... rather find a better way of getting this thread access to the monitor.
-    private static AtomicReference<PanicOnlyMonitor> panicMonitor = new AtomicReference<>(null);
 
     public static void main(String[] args) {
         String enableLoggerProperty = System.getProperty("enable_logger");
@@ -63,6 +59,7 @@ public final class LongLivedEntryPoint {
                 .build();
 
         LifecycleManager lifecycleManager = LifecycleManager.newManager(config);
+        PanicOnlyMonitor panicOnlyMonitor = lifecycleManager.getPanicOnlyShutdownMonitor();
         FutureTask<Result<Void>> lifecycleManagerTask = new FutureTask<>(lifecycleManager);
         Thread lifecycleManagerThread = new Thread(lifecycleManagerTask);
         lifecycleManagerThread.start();
@@ -84,15 +81,8 @@ public final class LongLivedEntryPoint {
             }
 
         } catch (Throwable e) {
-            PanicOnlyMonitor monitor = panicMonitor.get();
-            if (monitor != null) {
-                monitor.panic(e);
-            }
+            panicOnlyMonitor.panic(e);
         }
-    }
-
-    public static void setPanicMonitor(PanicOnlyMonitor monitor) {
-        panicMonitor.set(monitor);
     }
 
     private static void overrideOutputStreams() {

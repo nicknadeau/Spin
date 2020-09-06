@@ -1,6 +1,5 @@
 package spin.core.lifecycle;
 
-import spin.core.LongLivedEntryPoint;
 import spin.core.runner.TestRunner;
 import spin.core.server.Server;
 import spin.core.server.request.parse.JsonClientRequestParser;
@@ -26,6 +25,8 @@ import java.util.concurrent.CyclicBarrier;
 public final class LifecycleComponentManager {
     private static final Logger LOGGER = Logger.forClass(LifecycleComponentManager.class);
     private enum State { PRE_INIT, INIT, STARTED, STOPPED }
+    private final ShutdownMonitor shutdownMonitor;
+    private final LifecycleComponentConfig config;
     private State state = State.PRE_INIT;
     private List<CloseableBlockingQueue<TestInfo>> testInfoQueues;
     private List<CloseableBlockingQueue<TestResult>> testResultQueues;
@@ -38,22 +39,34 @@ public final class LifecycleComponentManager {
     private Thread outputterThread;
     private List<Thread> executorThreads;
 
-    private LifecycleComponentManager() {}
-
-    public static LifecycleComponentManager newManager() {
-        return new LifecycleComponentManager();
+    private LifecycleComponentManager(LifecycleComponentConfig config) {
+        ObjectChecker.assertNonNull(config);
+        this.shutdownMonitor = new ShutdownMonitor();
+        this.config = config;
     }
 
-    ListenOnlyMonitor initializeAllComponents(LifecycleComponentConfig config) throws IOException, SQLException {
-        ObjectChecker.assertNonNull(config);
+    public static LifecycleComponentManager newManager(LifecycleComponentConfig config) {
+        return new LifecycleComponentManager(config);
+    }
+
+    PanicOnlyMonitor getPanicOnlyShutdownMonitor() {
+        return PanicOnlyMonitor.wrapForPanicsOnly(this.shutdownMonitor);
+    }
+
+    ListenOnlyMonitor getListenOnlyShutdownMonitor() {
+        return ListenOnlyMonitor.wrapForListeningOnly(this.shutdownMonitor);
+    }
+
+    void initializeAllComponents() throws IOException, SQLException {
+        ObjectChecker.assertNonNull(this.config);
         if (this.state != State.PRE_INIT) {
             throw new IllegalStateException("Cannot initialize components: components are already initialized.");
         }
 
         LOGGER.log("Initializing all life-cycled components...");
-        DatabaseConnectionProvider databaseConnectionProvider = (config.doOutputToDatabase) ? new DatabaseConnectionProvider() : null;
+        DatabaseConnectionProvider databaseConnectionProvider = (this.config.doOutputToDatabase) ? new DatabaseConnectionProvider() : null;
         if (databaseConnectionProvider != null) {
-            databaseConnectionProvider.initialize(new File(config.databaseConfigPath));
+            databaseConnectionProvider.initialize(new File(this.config.databaseConfigPath));
 
             try (Connection connection = databaseConnectionProvider.getConnection()) {
                 clearDatabase(connection);
@@ -61,19 +74,18 @@ public final class LifecycleComponentManager {
             }
         }
 
-        CyclicBarrier barrier = new CyclicBarrier(config.numExecutorThreads + 3);
+        CyclicBarrier barrier = new CyclicBarrier(this.config.numExecutorThreads + 3);
 
-        ShutdownMonitor shutdownMonitor = new ShutdownMonitor();
-        NotifyOnlyMonitor notifyMonitor = NotifyOnlyMonitor.wrapForNotificationsOnly(shutdownMonitor);
-        PanicOnlyMonitor panicMonitor = PanicOnlyMonitor.wrapForPanicsOnly(shutdownMonitor);
+        NotifyOnlyMonitor notifyMonitor = NotifyOnlyMonitor.wrapForNotificationsOnly(this.shutdownMonitor);
+        PanicOnlyMonitor panicMonitor = PanicOnlyMonitor.wrapForPanicsOnly(this.shutdownMonitor);
 
-        this.testInfoQueues = createTestQueues(config);
-        this.testResultQueues = createTestResultQueues(config);
-        this.testExecutors = createExecutors(config, this.testInfoQueues, this.testResultQueues, barrier, panicMonitor);
-        this.resultOutputter = (config.doOutputToDatabase)
+        this.testInfoQueues = createTestQueues();
+        this.testResultQueues = createTestResultQueues();
+        this.testExecutors = createExecutors(this.testInfoQueues, this.testResultQueues, barrier, panicMonitor);
+        this.resultOutputter = (this.config.doOutputToDatabase)
                 ? ResultOutputter.outputterToConsoleAndDb(barrier, panicMonitor, this.testResultQueues, databaseConnectionProvider.getConnection())
                 : ResultOutputter.outputter(barrier, panicMonitor, this.testResultQueues);
-        this.testSuiteRunner = (config.doOutputToDatabase)
+        this.testSuiteRunner = (this.config.doOutputToDatabase)
                 ? TestSuiteRunner.withDatabaseWriter(barrier, notifyMonitor, this.testInfoQueues, databaseConnectionProvider.getConnection())
                 : TestSuiteRunner.withOutgoingQueue(barrier, notifyMonitor, this.testInfoQueues);
         this.server = Server.Builder.newBuilder()
@@ -84,11 +96,9 @@ public final class LifecycleComponentManager {
                 .usingClientRequestParser(new JsonClientRequestParser())
                 .build();
 
-        LongLivedEntryPoint.setPanicMonitor(panicMonitor);
         this.state = State.INIT;
 
         LOGGER.log("All life-cycled components initialized.");
-        return ListenOnlyMonitor.wrapForListeningOnly(shutdownMonitor);
     }
 
     void startAllComponents() throws IOException {
@@ -179,33 +189,33 @@ public final class LifecycleComponentManager {
         return threads;
     }
 
-    private List<CloseableBlockingQueue<TestInfo>> createTestQueues(LifecycleComponentConfig config) {
+    private List<CloseableBlockingQueue<TestInfo>> createTestQueues() {
         List<CloseableBlockingQueue<TestInfo>> queues = new ArrayList<>();
-        for (int i = 0; i < config.numExecutorThreads; i++) {
-            queues.add(CloseableBlockingQueue.withCapacity(config.interComponentQueueCapacity));
+        for (int i = 0; i < this.config.numExecutorThreads; i++) {
+            queues.add(CloseableBlockingQueue.withCapacity(this.config.interComponentQueueCapacity));
         }
         return queues;
     }
 
-    private List<CloseableBlockingQueue<TestResult>> createTestResultQueues(LifecycleComponentConfig config) {
+    private List<CloseableBlockingQueue<TestResult>> createTestResultQueues() {
         List<CloseableBlockingQueue<TestResult>> queues = new ArrayList<>();
-        for (int i = 0; i < config.numExecutorThreads; i++) {
-            queues.add(CloseableBlockingQueue.withCapacity(config.interComponentQueueCapacity));
+        for (int i = 0; i < this.config.numExecutorThreads; i++) {
+            queues.add(CloseableBlockingQueue.withCapacity(this.config.interComponentQueueCapacity));
         }
         return queues;
     }
 
-    private List<TestExecutor> createExecutors(LifecycleComponentConfig config, List<CloseableBlockingQueue<TestInfo>> testsQueues, List<CloseableBlockingQueue<TestResult>> resultsQueues, CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor) {
+    private List<TestExecutor> createExecutors(List<CloseableBlockingQueue<TestInfo>> testsQueues, List<CloseableBlockingQueue<TestResult>> resultsQueues, CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor) {
         if (testsQueues.size() != resultsQueues.size()) {
             throw new IllegalArgumentException("num tests queues (" + testsQueues.size() + ") != num results queues (" + resultsQueues.size() + ").");
         }
-        if (testsQueues.size() != config.numExecutorThreads) {
-            throw new IllegalArgumentException("num tests queues (" + testsQueues.size() + ") != num executor threads (" + config.numExecutorThreads + ").");
+        if (testsQueues.size() != this.config.numExecutorThreads) {
+            throw new IllegalArgumentException("num tests queues (" + testsQueues.size() + ") != num executor threads (" + this.config.numExecutorThreads + ").");
         }
 
         List<TestExecutor> executors = new ArrayList<>();
-        for (int i = 0; i < config.numExecutorThreads; i++) {
-            executors.add(TestExecutor.withQueues(barrier, shutdownMonitor, testsQueues.get(i), resultsQueues.get(i), config.doOutputToDatabase));
+        for (int i = 0; i < this.config.numExecutorThreads; i++) {
+            executors.add(TestExecutor.withQueues(barrier, shutdownMonitor, testsQueues.get(i), resultsQueues.get(i), this.config.doOutputToDatabase));
         }
         return executors;
     }
