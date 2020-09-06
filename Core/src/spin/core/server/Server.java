@@ -1,13 +1,12 @@
 package spin.core.server;
 
 import org.apache.camel.test.AvailablePortFinder;
-import spin.core.runner.TestRunner;
+import spin.core.lifecycle.PanicOnlyMonitor;
 import spin.core.server.handler.RequestHandler;
 import spin.core.server.request.*;
 import spin.core.server.request.parse.ClientRequestParser;
-import spin.core.server.response.RunSuiteResponse;
+import spin.core.server.response.ErrorResponse;
 import spin.core.server.session.*;
-import spin.core.lifecycle.NotifyOnlyMonitor;
 import spin.core.util.Logger;
 import spin.core.type.Result;
 import spin.core.util.ObjectChecker;
@@ -25,17 +24,17 @@ public final class Server implements Runnable {
     private static final int BUFFER_CAPACITIES = 16_384;
     private final CyclicBarrier barrier;
     private final ServerContext context;
-    private final NotifyOnlyMonitor shutdownMonitor;
+    private final PanicOnlyMonitor shutdownMonitor;
     private final ClientRequestParser clientRequestParser;
     private final RequestHandler requestHandler;
     private volatile boolean isAlive = true;
 
-    private Server(CyclicBarrier barrier, ServerContext context, NotifyOnlyMonitor shutdownMonitor, ClientRequestParser clientRequestParser, TestRunner testRunner) {
+    private Server(CyclicBarrier barrier, ServerContext context, PanicOnlyMonitor shutdownMonitor, ClientRequestParser clientRequestParser, RequestHandler handler) {
         this.barrier = barrier;
         this.context = context;
         this.shutdownMonitor = shutdownMonitor;
         this.clientRequestParser = clientRequestParser;
-        this.requestHandler = RequestHandler.withRunner(testRunner);
+        this.requestHandler = handler;
     }
 
     public int getPort() {
@@ -144,7 +143,7 @@ public final class Server implements Runnable {
                 this.requestHandler.handleRequest(parseResult.getData(), context);
             } else {
                 // Failed to parse the request. We respond with an error to the client and terminate the session.
-                clientSession.putServerResponse(RunSuiteResponse.failed(parseResult.getError()).toJsonString());
+                clientSession.putServerResponse(ErrorResponse.newResponse(parseResult.getError()).toJsonString());
                 clientSession.terminateSession();
                 channel.register(this.context.selector, SelectionKey.OP_WRITE, clientSession);
                 this.context.selector.wakeup();
@@ -179,11 +178,8 @@ public final class Server implements Runnable {
     private void endConnectionIfComplete(SelectionKey key) throws IOException {
         ClientSession clientSession = (ClientSession) key.attachment();
         if (clientSession != null && clientSession.isSessionTerminated()) {
-            // Since this is still a single-use server and not a long-lived one, once we close the connection
-            // we are done and should shut down.
             key.channel().close();
             System.out.println("Connection closed for client #" + clientSession.id);
-            this.shutdownMonitor.requestGracefulShutdown();
         }
     }
 
@@ -192,9 +188,9 @@ public final class Server implements Runnable {
     public static final class Builder {
         private CyclicBarrier barrier;
         private String host;
-        private NotifyOnlyMonitor monitor;
+        private PanicOnlyMonitor monitor;
         private ClientRequestParser requestParser;
-        private TestRunner testRunner;
+        private RequestHandler requestHandler;
 
         private Builder() {}
 
@@ -212,7 +208,7 @@ public final class Server implements Runnable {
             return this;
         }
 
-        public Builder withShutdownMonitor(NotifyOnlyMonitor shutdownMonitor) {
+        public Builder withShutdownMonitor(PanicOnlyMonitor shutdownMonitor) {
             this.monitor = shutdownMonitor;
             return this;
         }
@@ -222,19 +218,19 @@ public final class Server implements Runnable {
             return this;
         }
 
-        public Builder withTestRunner(TestRunner testRunner) {
-            this.testRunner = testRunner;
+        public Builder withRequestHandler(RequestHandler requestHandler) {
+            this.requestHandler = requestHandler;
             return this;
         }
 
         public Server build() throws IOException {
-            ObjectChecker.assertNonNull(this.barrier, this.host, this.monitor, this.requestParser, this.testRunner);
+            ObjectChecker.assertNonNull(this.barrier, this.host, this.monitor, this.requestParser, this.requestHandler);
             ServerSocketChannel socketChannel = ServerSocketChannel.open();
             socketChannel.configureBlocking(false);
             int port = AvailablePortFinder.getNextAvailable();
             socketChannel.bind(new InetSocketAddress(this.host, port));
             ServerContext context = new ServerContext(socketChannel, Selector.open(), this.host, port);
-            return new Server(this.barrier, context, this.monitor, this.requestParser, this.testRunner);
+            return new Server(this.barrier, context, this.monitor, this.requestParser, this.requestHandler);
         }
     }
 }

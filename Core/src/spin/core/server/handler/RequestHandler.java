@@ -1,10 +1,14 @@
 package spin.core.server.handler;
 
+import spin.core.lifecycle.ShutdownOnlyMonitor;
 import spin.core.runner.TestRunner;
 import spin.core.server.request.ClientRequest;
 import spin.core.server.request.RequestType;
 import spin.core.server.request.RunSuiteClientRequest;
+import spin.core.server.response.ErrorResponse;
 import spin.core.server.response.RunSuiteResponse;
+import spin.core.server.response.ServerResponse;
+import spin.core.server.response.ShutdownResponse;
 import spin.core.server.session.RequestSessionContext;
 import spin.core.type.Result;
 import spin.core.util.Logger;
@@ -20,14 +24,16 @@ import java.util.concurrent.TimeUnit;
 public final class RequestHandler {
     private static final Logger LOGGER = Logger.forClass(RequestHandler.class);
     private final TestRunner testRunner;
+    private final ShutdownOnlyMonitor shutdownMonitor;
 
-    private RequestHandler(TestRunner testRunner) {
-        ObjectChecker.assertNonNull(testRunner);
+    private RequestHandler(TestRunner testRunner, ShutdownOnlyMonitor shutdownMonitor) {
+        ObjectChecker.assertNonNull(testRunner, shutdownMonitor);
         this.testRunner = testRunner;
+        this.shutdownMonitor = shutdownMonitor;
     }
 
-    public static RequestHandler withRunner(TestRunner testRunner) {
-        return new RequestHandler(testRunner);
+    public static RequestHandler newHandler(TestRunner testRunner, ShutdownOnlyMonitor shutdownMonitor) {
+        return new RequestHandler(testRunner, shutdownMonitor);
     }
 
     /**
@@ -49,17 +55,21 @@ public final class RequestHandler {
 
             Result<Integer> addResult = this.testRunner.addRequest(runSuiteRequest, 5, TimeUnit.MINUTES);
             if (!addResult.isSuccess()) {
-                writeResponseToClient(RunSuiteResponse.failed(addResult.getError()), sessionContext);
+                writeResponseToClient(ErrorResponse.newResponse(addResult.getError()), sessionContext);
             } else if (!runSuiteRequest.isBlocking()) {
-                writeResponseToClient(RunSuiteResponse.successful(addResult.getData()), sessionContext);
+                writeResponseToClient(RunSuiteResponse.newResponse(addResult.getData()), sessionContext);
             }
 
+        } else if (clientRequest.getType() == RequestType.SHUTDOWN) {
+            LOGGER.log("Received shutdown request from client");
+            writeResponseToClient(ShutdownResponse.newResponse(), sessionContext);
+            this.shutdownMonitor.requestGracefulShutdown();
         } else {
-            writeResponseToClient(RunSuiteResponse.failed("unknown request type: " + clientRequest.getType()), sessionContext);
+            writeResponseToClient(ErrorResponse.newResponse("unknown request type: " + clientRequest.getType()), sessionContext);
         }
     }
 
-    private static void writeResponseToClient(RunSuiteResponse response, RequestSessionContext sessionContext) throws ClosedChannelException {
+    private static void writeResponseToClient(ServerResponse response, RequestSessionContext sessionContext) throws ClosedChannelException {
         sessionContext.clientSession.putServerResponse(response.toJsonString() + "\n");
         sessionContext.clientSession.terminateSession();
         sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);

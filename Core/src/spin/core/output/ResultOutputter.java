@@ -1,5 +1,7 @@
 package spin.core.output;
 
+import spin.core.server.response.ErrorResponse;
+import spin.core.server.response.ServerResponse;
 import spin.core.server.session.RequestSessionContext;
 import spin.core.server.response.RunSuiteResponse;
 import spin.core.execution.TestResult;
@@ -136,7 +138,7 @@ public final class ResultOutputter implements Runnable {
                             System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalSuiteDuration()));
                             writeSuiteResultToDatabase(result);
 
-                            sendResponse(result.sessionContext, RunSuiteResponse.successful(result.testSuiteDbId));
+                            sendResponse(result.sessionContext, RunSuiteResponse.newResponse(result.testSuiteDbId));
                             LOGGER.log("Witnessed all tests in suite.");
                             this.isAlive = false;
                             break;
@@ -148,7 +150,7 @@ public final class ResultOutputter implements Runnable {
         } catch (Throwable t) {
             if (result != null) {
                 try {
-                    sendResponse(result.sessionContext, RunSuiteResponse.failed("Unexpected error: " + t.getMessage()));
+                    sendResponse(result.sessionContext, ErrorResponse.newResponse("Unexpected error: " + t.getMessage()));
                 } catch (ClosedChannelException e) {
                     // Nothing to do. We are already in a panic. Ignore this.
                 }
@@ -226,7 +228,7 @@ public final class ResultOutputter implements Runnable {
         }
     }
 
-    private static void sendResponse(RequestSessionContext sessionContext, RunSuiteResponse response) throws ClosedChannelException {
+    private static void sendResponse(RequestSessionContext sessionContext, ServerResponse response) throws ClosedChannelException {
         sessionContext.clientSession.putServerResponse(response.toJsonString() + "\n");
         sessionContext.clientSession.terminateSession();
         sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);

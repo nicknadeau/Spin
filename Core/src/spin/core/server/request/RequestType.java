@@ -2,6 +2,7 @@ package spin.core.server.request;
 
 public enum RequestType {
     RUN_SUITE("run_suite")
+    , SHUTDOWN("shutdown")
     ;
 
     public final String asString;

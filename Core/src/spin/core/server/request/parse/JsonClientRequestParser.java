@@ -5,6 +5,7 @@ import spin.core.exception.ParseException;
 import spin.core.server.request.ClientRequest;
 import spin.core.server.request.RequestType;
 import spin.core.server.request.RunSuiteClientRequest;
+import spin.core.server.request.ShutdownClientRequest;
 import spin.core.type.Result;
 import spin.core.util.ObjectChecker;
 
@@ -39,6 +40,8 @@ public final class JsonClientRequestParser implements ClientRequestParser {
 
             if (requestType == RequestType.RUN_SUITE) {
                 return parseRunSuiteRequest(parseAsJsonObject(jsonRequest, BODY_KEY));
+            } else if (requestType == RequestType.SHUTDOWN) {
+                return Result.successful(new ShutdownClientRequest());
             } else {
                 return Result.error(createParseFailureMessage("unsupported " + REQUEST_TYPE_KEY + ": " + requestType));
             }

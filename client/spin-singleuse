@@ -186,11 +186,28 @@ then
 fi
 
 is_success="$(python3 json_parser.py --run_suite --is_successful "$result")"
-if [ $is_success = true ]
+if [ $is_success = false ]
 then
-	echo "$(python3 json_parser.py --run_suite --get_suite_id "$result")"
-else
 	echo "$(python3 json_parser.py --run_suite --get_error "$result")"
 	exit 1
 fi
+
+echo "$(python3 json_parser.py --run_suite --get_suite_id "$result")"
+
+# Finally, issue a shutdown request
+
+echo '{"request_type":"shutdown"}' > input.txt
+
+is_connected=false
+while [ $is_connected = false ]
+do
+        result="$(netcat 127.0.0.1 $port < input.txt)"
+        if [ $? -eq 0 ]
+        then
+                is_connected=true
+        else
+                sleep 1
+        fi
+done
+rm input.txt
 

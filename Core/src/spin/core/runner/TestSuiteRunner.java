@@ -1,10 +1,10 @@
 package spin.core.runner;
 
+import spin.core.lifecycle.PanicOnlyMonitor;
 import spin.core.server.session.RequestSessionContext;
 import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.server.response.RunSuiteResponse;
 import spin.core.execution.TestInfo;
-import spin.core.lifecycle.NotifyOnlyMonitor;
 import spin.core.type.Result;
 import spin.core.util.CloseableBlockingQueue;
 import spin.core.util.Logger;
@@ -33,14 +33,14 @@ import java.util.regex.Pattern;
 public final class TestSuiteRunner implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestSuiteRunner.class);
     private final Object monitor = new Object();
-    private final NotifyOnlyMonitor shutdownMonitor;
+    private final PanicOnlyMonitor shutdownMonitor;
     private final CyclicBarrier barrier;
     private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
     private RunRequest runRequest = null;
 
-    private TestSuiteRunner(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    private TestSuiteRunner(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
         ObjectChecker.assertNonNull(barrier, shutdownMonitor, outgoingTestQueues);
         this.barrier = barrier;
         this.shutdownMonitor = shutdownMonitor;
@@ -57,7 +57,7 @@ public final class TestSuiteRunner implements Runnable {
      * @param outgoingTestQueues The queues to load the tests into.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
         return new TestSuiteRunner(barrier, shutdownMonitor, outgoingTestQueues, null);
     }
 
@@ -74,7 +74,7 @@ public final class TestSuiteRunner implements Runnable {
      * @param dbConnection The database connection.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
         ObjectChecker.assertNonNull(dbConnection);
         return new TestSuiteRunner(barrier, shutdownMonitor, outgoingTestQueues, dbConnection);
     }
@@ -230,10 +230,7 @@ public final class TestSuiteRunner implements Runnable {
                 writeEmptyClassResultToDatabase(classToTestInfoMap.keySet().iterator().next().getName(), testSuite.suiteId);
             }
             writeSuiteResultToDatabase(testSuite.suiteId);
-            sendResponse(testSuite.sessionContext, RunSuiteResponse.successful(testSuite.suiteId));
-
-            LOGGER.log("Notifying listener suite is done due to it having zero tests.");
-            this.shutdownMonitor.requestGracefulShutdown();
+            sendResponse(testSuite.sessionContext, RunSuiteResponse.newResponse(testSuite.suiteId));
         } else {
             int index = 0;
             while (index < testInfos.size()) {

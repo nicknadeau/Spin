@@ -2,6 +2,7 @@ package spin.core.lifecycle;
 
 import spin.core.runner.TestRunner;
 import spin.core.server.Server;
+import spin.core.server.handler.RequestHandler;
 import spin.core.server.request.parse.JsonClientRequestParser;
 import spin.core.execution.TestExecutor;
 import spin.core.execution.TestInfo;
@@ -75,9 +76,8 @@ public final class LifecycleComponentManager {
         }
 
         CyclicBarrier barrier = new CyclicBarrier(this.config.numExecutorThreads + 3);
-
-        NotifyOnlyMonitor notifyMonitor = NotifyOnlyMonitor.wrapForNotificationsOnly(this.shutdownMonitor);
         PanicOnlyMonitor panicMonitor = PanicOnlyMonitor.wrapForPanicsOnly(this.shutdownMonitor);
+        ShutdownOnlyMonitor shutdownOnlyMonitor = ShutdownOnlyMonitor.wrapForGracefulShutdownsOnly(this.shutdownMonitor);
 
         this.testInfoQueues = createTestQueues();
         this.testResultQueues = createTestResultQueues();
@@ -86,13 +86,16 @@ public final class LifecycleComponentManager {
                 ? ResultOutputter.outputterToConsoleAndDb(barrier, panicMonitor, this.testResultQueues, databaseConnectionProvider.getConnection())
                 : ResultOutputter.outputter(barrier, panicMonitor, this.testResultQueues);
         this.testSuiteRunner = (this.config.doOutputToDatabase)
-                ? TestSuiteRunner.withDatabaseWriter(barrier, notifyMonitor, this.testInfoQueues, databaseConnectionProvider.getConnection())
-                : TestSuiteRunner.withOutgoingQueue(barrier, notifyMonitor, this.testInfoQueues);
+                ? TestSuiteRunner.withDatabaseWriter(barrier, panicMonitor, this.testInfoQueues, databaseConnectionProvider.getConnection())
+                : TestSuiteRunner.withOutgoingQueue(barrier, panicMonitor, this.testInfoQueues);
+
+        TestRunner testRunner = TestRunner.wrap(this.testSuiteRunner);
+
         this.server = Server.Builder.newBuilder()
                 .forHost("127.0.0.1")
                 .withBarrier(barrier)
-                .withShutdownMonitor(notifyMonitor)
-                .withTestRunner(TestRunner.wrap(this.testSuiteRunner))
+                .withShutdownMonitor(panicMonitor)
+                .withRequestHandler(RequestHandler.newHandler(testRunner, shutdownOnlyMonitor))
                 .usingClientRequestParser(new JsonClientRequestParser())
                 .build();
 
