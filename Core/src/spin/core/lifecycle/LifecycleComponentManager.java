@@ -1,9 +1,9 @@
 package spin.core.lifecycle;
 
 import spin.core.LongLivedEntryPoint;
+import spin.core.runner.TestRunner;
 import spin.core.server.Server;
 import spin.core.server.request.parse.JsonClientRequestParser;
-import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.execution.TestExecutor;
 import spin.core.execution.TestInfo;
 import spin.core.execution.TestResult;
@@ -27,7 +27,6 @@ public final class LifecycleComponentManager {
     private static final Logger LOGGER = Logger.forClass(LifecycleComponentManager.class);
     private enum State { PRE_INIT, INIT, STARTED, STOPPED }
     private State state = State.PRE_INIT;
-    private CloseableBlockingQueue<RunSuiteClientRequest> runSuiteRequestSubmissionQueue;
     private List<CloseableBlockingQueue<TestInfo>> testInfoQueues;
     private List<CloseableBlockingQueue<TestResult>> testResultQueues;
     private Server server;
@@ -63,18 +62,10 @@ public final class LifecycleComponentManager {
         }
 
         CyclicBarrier barrier = new CyclicBarrier(config.numExecutorThreads + 3);
-        this.runSuiteRequestSubmissionQueue = CloseableBlockingQueue.withCapacity(config.incomingSuiteQueueCapacity);
 
         ShutdownMonitor shutdownMonitor = new ShutdownMonitor();
         NotifyOnlyMonitor notifyMonitor = NotifyOnlyMonitor.wrapForNotificationsOnly(shutdownMonitor);
         PanicOnlyMonitor panicMonitor = PanicOnlyMonitor.wrapForPanicsOnly(shutdownMonitor);
-
-        this.server = Server.Builder.newBuilder()
-                .forHost("127.0.0.1")
-                .withBarrier(barrier)
-                .withShutdownMonitor(notifyMonitor)
-                .usingClientRequestParser(new JsonClientRequestParser())
-                .build();
 
         this.testInfoQueues = createTestQueues(config);
         this.testResultQueues = createTestResultQueues(config);
@@ -83,12 +74,19 @@ public final class LifecycleComponentManager {
                 ? ResultOutputter.outputterToConsoleAndDb(barrier, panicMonitor, this.testResultQueues, databaseConnectionProvider.getConnection())
                 : ResultOutputter.outputter(barrier, panicMonitor, this.testResultQueues);
         this.testSuiteRunner = (config.doOutputToDatabase)
-                ? TestSuiteRunner.withDatabaseWriter(barrier, notifyMonitor, this.runSuiteRequestSubmissionQueue, this.testInfoQueues, databaseConnectionProvider.getConnection())
-                : TestSuiteRunner.withOutgoingQueue(barrier, notifyMonitor, this.runSuiteRequestSubmissionQueue, this.testInfoQueues);
+                ? TestSuiteRunner.withDatabaseWriter(barrier, notifyMonitor, this.testInfoQueues, databaseConnectionProvider.getConnection())
+                : TestSuiteRunner.withOutgoingQueue(barrier, notifyMonitor, this.testInfoQueues);
+        this.server = Server.Builder.newBuilder()
+                .forHost("127.0.0.1")
+                .withBarrier(barrier)
+                .withShutdownMonitor(notifyMonitor)
+                .withTestRunner(TestRunner.wrap(this.testSuiteRunner))
+                .usingClientRequestParser(new JsonClientRequestParser())
+                .build();
+
         LongLivedEntryPoint.setPanicMonitor(panicMonitor);
         this.state = State.INIT;
-        
-        CommunicationHolder.initialize(this.runSuiteRequestSubmissionQueue);
+
         LOGGER.log("All life-cycled components initialized.");
         return ListenOnlyMonitor.wrapForListeningOnly(shutdownMonitor);
     }
@@ -163,7 +161,6 @@ public final class LifecycleComponentManager {
         for (CloseableBlockingQueue<TestInfo> testQueue : this.testInfoQueues) {
             testQueue.close();
         }
-        this.runSuiteRequestSubmissionQueue.close();
     }
 
     private void shutdownExecutors() {

@@ -5,6 +5,7 @@ import spin.core.server.request.RunSuiteClientRequest;
 import spin.core.server.response.RunSuiteResponse;
 import spin.core.execution.TestInfo;
 import spin.core.lifecycle.NotifyOnlyMonitor;
+import spin.core.type.Result;
 import spin.core.util.CloseableBlockingQueue;
 import spin.core.util.Logger;
 import spin.core.util.ObjectChecker;
@@ -31,55 +32,51 @@ import java.util.regex.Pattern;
  */
 public final class TestSuiteRunner implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestSuiteRunner.class);
-    private static int suiteIds = 0;
     private final Object monitor = new Object();
     private final NotifyOnlyMonitor shutdownMonitor;
     private final CyclicBarrier barrier;
     private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
-    private final CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
+    private RunRequest runRequest = null;
 
-    private TestSuiteRunner(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
-        ObjectChecker.assertNonNull(barrier, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues);
+    private TestSuiteRunner(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+        ObjectChecker.assertNonNull(barrier, shutdownMonitor, outgoingTestQueues);
         this.barrier = barrier;
         this.shutdownMonitor = shutdownMonitor;
-        this.incomingRunSuiteRequests = incomingRunSuiteRequests;
         this.outgoingTestQueues = outgoingTestQueues;
         this.dbConnection = dbConnection;
     }
 
     /**
-     * Constructs a new suite runner that will put all of the tests it receives into the given queues. It will attempt
-     * to add tests to these queues fairly so that they each receive a roughly equal load.
+     * Constructs a new suite runner that will put all of the tests it receives into the given outgoing queues.
+     * It will attempt to add tests to these queues fairly so that they each receive a roughly equal load.
      *
      * @param barrier The barrier to wait on before running.
      * @param shutdownMonitor The shutdown monitor.
-     * @param incomingRunSuiteRequests The queue in which test suite requests are loaded into.
      * @param outgoingTestQueues The queues to load the tests into.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
-        return new TestSuiteRunner(barrier, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues, null);
+    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
+        return new TestSuiteRunner(barrier, shutdownMonitor, outgoingTestQueues, null);
     }
 
     /**
      * Constructs a new suite runner that will put all of the tests it receives into the given queues. It will attempt
      * to add tests to these queues fairly so that they each receive a roughly equal load.
      *
-     * This test suite will writer all of the tests, test classes and suites it receives into a database using the given
+     * This test suite will write all of the tests, test classes and suites it receives into a database using the given
      * database writer.
      *
      * @param barrier The barrier to wait on before running.
      * @param shutdownMonitor The shutdown monitor.
-     * @param incomingRunSuiteRequests The queue in which test suite requests are loaded into.
      * @param outgoingTestQueues The queues to load the tests into.
      * @param dbConnection The database connection.
      * @return the suite runner.
      */
-    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, CloseableBlockingQueue<RunSuiteClientRequest> incomingRunSuiteRequests, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, NotifyOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
         ObjectChecker.assertNonNull(dbConnection);
-        return new TestSuiteRunner(barrier, shutdownMonitor, incomingRunSuiteRequests, outgoingTestQueues, dbConnection);
+        return new TestSuiteRunner(barrier, shutdownMonitor, outgoingTestQueues, dbConnection);
     }
 
     @Override
@@ -92,7 +89,7 @@ public final class TestSuiteRunner implements Runnable {
             while (this.isAlive) {
                 try {
                     LOGGER.log("Attempting to fetch next test suite request to load...");
-                    RunSuiteClientRequest request = this.incomingRunSuiteRequests.poll(5, TimeUnit.MINUTES);
+                    RunRequest request = this.blockingGetNextRequest();
                     if (request != null) {
                         LOGGER.log("Got next test suite request to load.");
                         TestSuite testSuite = createTestSuiteFromRequest(request);
@@ -154,8 +151,56 @@ public final class TestSuiteRunner implements Runnable {
         }
     }
 
-    private static TestSuite createTestSuiteFromRequest(RunSuiteClientRequest runSuiteRequest) throws IOException {
-        File baseDir = new File(runSuiteRequest.getBaseDirectory());
+    /**
+     * Attempts to add the specified request to this runner.
+     *
+     * Returns a successful result that holds the suite id of the newly submitted request or else an error result if the
+     * request could not be submitted.
+     *
+     * @param request The request to submit.
+     * @param timeout The timeout duration.
+     * @param unit The time units the duration is specified in.
+     * @return the result of adding the request.
+     */
+    public Result<Integer> addRequest(RunSuiteClientRequest request, long timeout, TimeUnit unit) throws InterruptedException {
+        ObjectChecker.assertNonNull(request, unit);
+        ObjectChecker.assertPositive(timeout);
+
+        long currentTime = System.nanoTime();
+        long deadline = currentTime + unit.toNanos(timeout);
+
+        synchronized (this.monitor) {
+            while ((this.isAlive) && (currentTime < deadline) && (this.runRequest != null)) {
+                this.monitor.wait(TimeUnit.NANOSECONDS.toMillis(deadline - currentTime));
+                currentTime = System.nanoTime();
+            }
+
+            if ((this.isAlive) && (currentTime < deadline)) {
+                this.runRequest = new RunRequest(request);
+                this.monitor.notifyAll();
+                return Result.successful(this.runRequest.id);
+            } else if (!this.isAlive) {
+                return Result.error("Unable to add request: runner is shutdown.");
+            } else {
+                return Result.error("Timed out waiting to add request.");
+            }
+        }
+    }
+
+    private RunRequest blockingGetNextRequest() throws InterruptedException {
+        synchronized (this.monitor) {
+            while ((this.isAlive) && (this.runRequest == null)) {
+                this.monitor.wait();
+            }
+            RunRequest nextRequest = this.isAlive ? this.runRequest : null;
+            this.runRequest = null;
+            this.monitor.notifyAll();
+            return nextRequest;
+        }
+    }
+
+    private static TestSuite createTestSuiteFromRequest(RunRequest runRequest) throws IOException {
+        File baseDir = new File(runRequest.request.getBaseDirectory());
         if (!baseDir.exists()) {
             throw new IllegalStateException("Tests base dir does not exist.");
         }
@@ -163,17 +208,17 @@ public final class TestSuiteRunner implements Runnable {
             throw new IllegalStateException("Tests base dir is not a directory.");
         }
         List<String> classNames = new ArrayList<>();
-        fetchAllFullyQualifiedTestClassNames(Pattern.compile(runSuiteRequest.getMatcher()), baseDir.getCanonicalPath().length(), baseDir, classNames);
+        fetchAllFullyQualifiedTestClassNames(Pattern.compile(runRequest.request.getMatcher()), baseDir.getCanonicalPath().length(), baseDir, classNames);
 
-        LOGGER.log("Number of given dependencies: " + (runSuiteRequest.getDependencies().length - 1));
+        LOGGER.log("Number of given dependencies: " + (runRequest.request.getDependencies().length - 1));
 
-        URL[] dependencyUrls = new URL[runSuiteRequest.getDependencies().length];
-        for (int i = 0; i < runSuiteRequest.getDependencies().length; i++) {
-            dependencyUrls[i] = new File(runSuiteRequest.getDependencies()[i]).toURI().toURL();
+        URL[] dependencyUrls = new URL[runRequest.request.getDependencies().length];
+        for (int i = 0; i < runRequest.request.getDependencies().length; i++) {
+            dependencyUrls[i] = new File(runRequest.request.getDependencies()[i]).toURI().toURL();
         }
         URLClassLoader classLoader = new URLClassLoader(dependencyUrls);
 
-        return new TestSuite(classNames, classLoader, runSuiteRequest.getSessionContext(), suiteIds++);
+        return new TestSuite(classNames, classLoader, runRequest.request.getSessionContext(), runRequest.id);
     }
 
     private void runTests(TestSuite testSuite, List<TestInfo> testInfos, Map<Class<?>, List<TestInfo>> classToTestInfoMap) throws SQLException, ClosedChannelException, InterruptedException {
@@ -318,5 +363,16 @@ public final class TestSuiteRunner implements Runnable {
     @Override
     public String toString() {
         return this.getClass().getName() + (this.isAlive ? " { [running] }" : " { [shutdown] }");
+    }
+
+    private static final class RunRequest {
+        private static int ids = 0;
+        private final int id;
+        private final RunSuiteClientRequest request;
+
+        private RunRequest(RunSuiteClientRequest request) {
+            this.id = ids++;
+            this.request = request;
+        }
     }
 }

@@ -179,6 +179,12 @@ rm input.txt
 
 echo '[spin-singleuse] All tests completed.' >> output.txt
 
+if [ -z "$result" ]
+then
+	echo "Empty result returned."
+	exit 1
+fi
+
 is_success="$(python3 json_parser.py --run_suite --is_successful "$result")"
 if [ $is_success = true ]
 then

@@ -15,4 +15,10 @@ public final class ObjectChecker {
             }
         }
     }
+
+    public static void assertPositive(long value) {
+        if (value <= 0) {
+            throw new IllegalArgumentException("value must be strictly positive but was: " + value);
+        }
+    }
 }

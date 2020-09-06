@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class LongLivedEntryPoint {
     private static final Logger LOGGER = Logger.forClass(LongLivedEntryPoint.class);
     private static final int INTER_COMPONENT_QUEUE_CAPACITY = 262_144;
-    private static final int INCOMING_QUEUE_CAPACITY = 1;
 
     //TODO: temporary solution... rather find a better way of getting this thread access to the monitor.
     private static AtomicReference<PanicOnlyMonitor> panicMonitor = new AtomicReference<>(null);
@@ -61,7 +60,6 @@ public final class LongLivedEntryPoint {
                 .setWhetherToOutputResultsToDatabase(writeToDb)
                 .setNumberOfTestExecutors(numThreads)
                 .setCapacityOfInterComponentQueues(INTER_COMPONENT_QUEUE_CAPACITY)
-                .setCapacityOfIncomingSuiteQueue(INCOMING_QUEUE_CAPACITY)
                 .build();
 
         LifecycleManager lifecycleManager = LifecycleManager.newManager(config);

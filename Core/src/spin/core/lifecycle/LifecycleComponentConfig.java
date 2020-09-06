@@ -5,9 +5,8 @@ public final class LifecycleComponentConfig {
     public final boolean doOutputToDatabase;
     public final int numExecutorThreads;
     public final int interComponentQueueCapacity;
-    public final int incomingSuiteQueueCapacity;
 
-    private LifecycleComponentConfig(String dbConfigPath, boolean dbWrite, int numExecutors, int queueCap, int incomingCap) {
+    private LifecycleComponentConfig(String dbConfigPath, boolean dbWrite, int numExecutors, int queueCap) {
         if (dbConfigPath == null) {
             throw new NullPointerException("dbConfigPath must be non-null.");
         }
@@ -17,20 +16,15 @@ public final class LifecycleComponentConfig {
         if (queueCap < 1) {
             throw new IllegalArgumentException("queueCap must be strictly positive but is: " + queueCap);
         }
-        if (incomingCap < 1) {
-            throw new IllegalArgumentException("incomingCap must be strictly positive but is: " + incomingCap);
-        }
         this.databaseConfigPath = dbConfigPath;
         this.doOutputToDatabase = dbWrite;
         this.numExecutorThreads = numExecutors;
         this.interComponentQueueCapacity = queueCap;
-        this.incomingSuiteQueueCapacity = incomingCap;
     }
 
     @Override
     public String toString() {
         return this.getClass().getSimpleName() + " { num executors: " + this.numExecutorThreads
-                + ", incoming capacity: " + this.incomingSuiteQueueCapacity
                 + ", internal capacity: " + this.interComponentQueueCapacity
                 + ", db config: " + this.databaseConfigPath
                 + ", " + (this.doOutputToDatabase ? "[write to db]" : "[no db write]") + " }";
@@ -41,7 +35,6 @@ public final class LifecycleComponentConfig {
         private Boolean doOutputToDatabase;
         private Integer numExecutorThreads;
         private Integer interComponentQueueCapacity;
-        private Integer incomingSuiteQueueCapacity;
 
         public static Builder newBuilder() {
             return new Builder();
@@ -79,18 +72,10 @@ public final class LifecycleComponentConfig {
             return this;
         }
 
-        public Builder setCapacityOfIncomingSuiteQueue(int capacity) {
-            if (this.incomingSuiteQueueCapacity != null) {
-                throw new IllegalStateException("incoming suite queue capacity is already set.");
-            }
-            this.incomingSuiteQueueCapacity = capacity;
-            return this;
-        }
-
         //TODO: how does a null Boolean get unboxed? Does it throw or default to false?
 
         public LifecycleComponentConfig build() {
-            return new LifecycleComponentConfig(this.databaseConfigPath, this.doOutputToDatabase, this.numExecutorThreads, this.interComponentQueueCapacity, this.incomingSuiteQueueCapacity);
+            return new LifecycleComponentConfig(this.databaseConfigPath, this.doOutputToDatabase, this.numExecutorThreads, this.interComponentQueueCapacity);
         }
     }
 }

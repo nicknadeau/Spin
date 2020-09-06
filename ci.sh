@@ -30,7 +30,7 @@ then
 			then
 				skip_sys_tests=true
 			else
-				echo 'Unsupported task. Task must be one of: [build, demo, sys-tests]'
+				echo 'Unsupported task. Task must be one of: [build, demo, tests, sys-tests]'
 				exit 1
 			fi
 		done

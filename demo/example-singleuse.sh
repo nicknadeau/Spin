@@ -36,7 +36,5 @@ cp ../"$global_dependencies"/* "$spin_dependencies" && \
 cp -r ../"$example_compiled_classes"/* "$example_compiled" && \
 mkdir "$example_config" && \
 cp ../"$db_configs" "$example_config" && \
-#mkdir example/lib
-#cp ../lib/hamcrest-all-1.3.jar example/lib/
 
 cd $curr_dir

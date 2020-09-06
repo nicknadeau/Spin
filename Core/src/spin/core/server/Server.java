@@ -1,6 +1,7 @@
 package spin.core.server;
 
 import org.apache.camel.test.AvailablePortFinder;
+import spin.core.runner.TestRunner;
 import spin.core.server.handler.RequestHandler;
 import spin.core.server.request.*;
 import spin.core.server.request.parse.ClientRequestParser;
@@ -26,13 +27,15 @@ public final class Server implements Runnable {
     private final ServerContext context;
     private final NotifyOnlyMonitor shutdownMonitor;
     private final ClientRequestParser clientRequestParser;
+    private final RequestHandler requestHandler;
     private volatile boolean isAlive = true;
 
-    private Server(CyclicBarrier barrier, ServerContext context, NotifyOnlyMonitor shutdownMonitor, ClientRequestParser clientRequestParser) {
+    private Server(CyclicBarrier barrier, ServerContext context, NotifyOnlyMonitor shutdownMonitor, ClientRequestParser clientRequestParser, TestRunner testRunner) {
         this.barrier = barrier;
         this.context = context;
         this.shutdownMonitor = shutdownMonitor;
         this.clientRequestParser = clientRequestParser;
+        this.requestHandler = RequestHandler.withRunner(testRunner);
     }
 
     public int getPort() {
@@ -138,7 +141,7 @@ public final class Server implements Runnable {
             if (parseResult.isSuccess()) {
                 System.out.println("Request from client #" + clientSession.id + " successfully parsed.");
                 RequestSessionContext context = RequestSessionContext.socketContext(this.context.selector, channel, clientSession);
-                RequestHandler.handleRequest(parseResult.getData(), context);
+                this.requestHandler.handleRequest(parseResult.getData(), context);
             } else {
                 // Failed to parse the request. We respond with an error to the client and terminate the session.
                 clientSession.putServerResponse(RunSuiteResponse.failed(parseResult.getError()).toJsonString());
@@ -191,6 +194,7 @@ public final class Server implements Runnable {
         private String host;
         private NotifyOnlyMonitor monitor;
         private ClientRequestParser requestParser;
+        private TestRunner testRunner;
 
         private Builder() {}
 
@@ -218,14 +222,19 @@ public final class Server implements Runnable {
             return this;
         }
 
+        public Builder withTestRunner(TestRunner testRunner) {
+            this.testRunner = testRunner;
+            return this;
+        }
+
         public Server build() throws IOException {
-            ObjectChecker.assertNonNull(this.barrier, this.host, this.monitor, this.requestParser);
+            ObjectChecker.assertNonNull(this.barrier, this.host, this.monitor, this.requestParser, this.testRunner);
             ServerSocketChannel socketChannel = ServerSocketChannel.open();
             socketChannel.configureBlocking(false);
             int port = AvailablePortFinder.getNextAvailable();
             socketChannel.bind(new InetSocketAddress(this.host, port));
             ServerContext context = new ServerContext(socketChannel, Selector.open(), this.host, port);
-            return new Server(this.barrier, context, this.monitor, this.requestParser);
+            return new Server(this.barrier, context, this.monitor, this.requestParser, this.testRunner);
         }
     }
 }

@@ -8,3 +8,4 @@ pack
 *.pyc
 gen_file
 venv
+test_reports

@@ -46,7 +46,9 @@ public final class ClientSession {
         //TODO: byte buffer position?
         byte[] bytes = new byte[this.clientRequestBuffer.availableSpace()];
         int numBytesRead = socketChannel.read(ByteBuffer.wrap(bytes));
-        this.clientRequestBuffer.writeBytes(Arrays.copyOf(bytes, numBytesRead));
+        if (numBytesRead > 0) {
+            this.clientRequestBuffer.writeBytes(Arrays.copyOf(bytes, numBytesRead));
+        }
     }
 
     /**
