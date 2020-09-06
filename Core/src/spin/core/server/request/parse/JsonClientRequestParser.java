@@ -17,6 +17,7 @@ public final class JsonClientRequestParser implements ClientRequestParser {
     private static final String BASE_DIR_KEY = "base_dir";
     private static final String MATCHER_KEY = "matcher";
     private static final String DEPENDENCIES_KEY = "dependencies";
+    private static final String BLOCKING_KEY = "is_blocking";
     private static final String DEFAULT_MATCHER = ".*\\.class";
 
     @Override
@@ -72,11 +73,26 @@ public final class JsonClientRequestParser implements ClientRequestParser {
             dependencies[dependenciesAsJson.size()] = baseDir;
         }
 
-        return Result.successful(RunSuiteClientRequest.from(baseDir, matcher, dependencies));
+        boolean isBlocking = true;
+        if (requestBody.has(BLOCKING_KEY)) {
+            isBlocking = parseAsBoolean(requestBody, BLOCKING_KEY);
+        }
+
+        return isBlocking
+                ? Result.successful(RunSuiteClientRequest.blocking(baseDir, matcher, dependencies))
+                : Result.successful(RunSuiteClientRequest.nonBlocking(baseDir, matcher, dependencies));
     }
 
     private static String createParseFailureMessage(String cause) {
         return "Failed to parse request: " + cause;
+    }
+
+    private static boolean parseAsBoolean(JsonObject json, String attribute) throws ParseException {
+        JsonElement element = getElementFromAttribute(json, attribute);
+        if (!element.isJsonPrimitive()) {
+            throw new ParseException("expected " + attribute + " to be a Boolean");
+        }
+        return element.getAsBoolean();
     }
 
     private static String parseAsString(JsonObject json, String attribute) throws ParseException {

@@ -5,22 +5,33 @@ import spin.core.util.ObjectChecker;
 
 /**
  * A client request to run a test suite.
+ *
+ * A request may be either blocking or non-blocking. If blocking then the server will respond to the client only after
+ * the test suite has been fully executed. Otherwise, if non-blocking the server will respond immediately after
+ * processing the request.
  */
 public final class RunSuiteClientRequest implements ClientRequest {
     private final String baseDirectory;
     private final String matcher;
     private final String[] dependencies;
+    private final boolean isBlocking;
     private RequestSessionContext sessionContext = null;
 
-    private RunSuiteClientRequest(String baseDirectory, String matcher, String[] dependencies) {
+    private RunSuiteClientRequest(String baseDirectory, String matcher, String[] dependencies, boolean isBlocking) {
         this.baseDirectory = baseDirectory;
         this.matcher = matcher;
         this.dependencies = dependencies;
+        this.isBlocking = isBlocking;
     }
 
-    public static RunSuiteClientRequest from(String baseDirectory, String matcher, String[] dependencies) {
+    public static RunSuiteClientRequest blocking(String baseDirectory, String matcher, String[] dependencies) {
         ObjectChecker.assertNonNull(baseDirectory, matcher, dependencies);
-        return new RunSuiteClientRequest(baseDirectory, matcher, dependencies);
+        return new RunSuiteClientRequest(baseDirectory, matcher, dependencies, true);
+    }
+
+    public static RunSuiteClientRequest nonBlocking(String baseDirectory, String matcher, String[] dependencies) {
+        ObjectChecker.assertNonNull(baseDirectory, matcher, dependencies);
+        return new RunSuiteClientRequest(baseDirectory, matcher, dependencies, false);
     }
 
     public String getBaseDirectory() {
@@ -33,6 +44,10 @@ public final class RunSuiteClientRequest implements ClientRequest {
 
     public String[] getDependencies() {
         return this.dependencies;
+    }
+
+    public boolean isBlocking() {
+        return this.isBlocking;
     }
 
     public RequestSessionContext getSessionContext() {
@@ -66,6 +81,7 @@ public final class RunSuiteClientRequest implements ClientRequest {
         return this.getClass().getSimpleName() + " { base dir: " + this.baseDirectory
                 + ", matcher: " + this.matcher
                 + ", num dependencies: " + this.dependencies.length
+                + ", is blocking: " + this.isBlocking
                 + ", " + (this.sessionContext == null ? "no context bound" : "context is bound") + " }";
     }
 }

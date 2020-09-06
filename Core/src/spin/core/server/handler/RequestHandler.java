@@ -1,6 +1,5 @@
 package spin.core.server.handler;
 
-import spin.core.exception.UnreachableException;
 import spin.core.runner.TestRunner;
 import spin.core.server.request.ClientRequest;
 import spin.core.server.request.RequestType;
@@ -50,17 +49,20 @@ public final class RequestHandler {
 
             Result<Integer> addResult = this.testRunner.addRequest(runSuiteRequest, 5, TimeUnit.MINUTES);
             if (!addResult.isSuccess()) {
-                sessionContext.clientSession.putServerResponse(RunSuiteResponse.failed(addResult.getError()).toJsonString() + "\n");
-                sessionContext.clientSession.terminateSession();
-                sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);
-                sessionContext.selector.wakeup();
+                writeResponseToClient(RunSuiteResponse.failed(addResult.getError()), sessionContext);
+            } else if (!runSuiteRequest.isBlocking()) {
+                writeResponseToClient(RunSuiteResponse.successful(addResult.getData()), sessionContext);
             }
 
         } else {
-            sessionContext.clientSession.putServerResponse(RunSuiteResponse.failed("unknown request type: " + clientRequest.getType()).toJsonString() + "\n");
-            sessionContext.clientSession.terminateSession();
-            sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);
-            sessionContext.selector.wakeup();
+            writeResponseToClient(RunSuiteResponse.failed("unknown request type: " + clientRequest.getType()), sessionContext);
         }
+    }
+
+    private static void writeResponseToClient(RunSuiteResponse response, RequestSessionContext sessionContext) throws ClosedChannelException {
+        sessionContext.clientSession.putServerResponse(response.toJsonString() + "\n");
+        sessionContext.clientSession.terminateSession();
+        sessionContext.socketChannel.register(sessionContext.selector, SelectionKey.OP_WRITE, sessionContext.clientSession);
+        sessionContext.selector.wakeup();
     }
 }
