@@ -6,6 +6,7 @@ import spin.core.runner.TestSuiteDetails;
 import spin.core.util.ObjectChecker;
 
 import java.lang.reflect.Method;
+import java.util.Collection;
 
 /**
  * The result of running a test.
@@ -17,6 +18,8 @@ import java.lang.reflect.Method;
  * this test belongs to so that the suite can be tracked throughout the system.
  */
 public final class TestResult {
+    public final boolean isEmptySuite;
+    public final Collection<Class<?>> emptyClasses;
     public final Class<?> testClass;
     public final Method testMethod;
     public final boolean successful;
@@ -28,7 +31,9 @@ public final class TestResult {
     public final int testSuiteDbId;
     public final int testClassDbId;
 
-    private TestResult(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext, int testSuiteDbId, int testClassDbId) {
+    private TestResult(boolean isEmptySuite, Collection<Class<?>> emptyClasses, Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext, int testSuiteDbId, int testClassDbId) {
+        this.isEmptySuite = isEmptySuite;
+        this.emptyClasses = emptyClasses;
         this.testClass = testClass;
         this.testMethod = testMethod;
         this.successful = successful;
@@ -39,6 +44,10 @@ public final class TestResult {
         this.sessionContext = sessionContext;
         this.testSuiteDbId = testSuiteDbId;
         this.testClassDbId = testClassDbId;
+    }
+
+    public static TestResult forEmptySuite(Collection<Class<?>> emptyClasses, int testSuiteDbId) {
+        return new TestResult(true, emptyClasses, null, null, false, 0, null, null, null, null, testSuiteDbId, -1);
     }
 
     @Override
@@ -67,6 +76,8 @@ public final class TestResult {
         public TestResult build() {
             ObjectChecker.assertNonNull(this.executionReport, this.testInfo);
             return new TestResult(
+                    false,
+                    null,
                     this.testInfo.testClass,
                     this.testInfo.method,
                     this.executionReport.isSuccessful,

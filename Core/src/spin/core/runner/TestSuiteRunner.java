@@ -96,6 +96,8 @@ public final class TestSuiteRunner implements Runnable {
 
                         logTestMethods(classToTestInfoMap);
 
+                        //TODO: now we need to try and move this to the outputter | to do this we need outputter to have
+                        // changed to being a stateful per-suite non-threaded instance.
                         writeInitialValuesToDatabase(classToTestInfoMap, allTestInfos, testSuite.suiteId);
 
                         // Execute each of the declared test methods.
@@ -203,20 +205,16 @@ public final class TestSuiteRunner implements Runnable {
         return new TestSuite(classNames, classLoader, runRequest.request.getSessionContext(), runRequest.id);
     }
 
-    private void runTests(TestSuite testSuite, List<TestInfo> testInfos, Map<Class<?>, List<TestInfo>> classToTestInfoMap) throws SQLException, ClosedChannelException, InterruptedException, TimeoutException, ExecutionException {
+    private void runTests(TestSuite testSuite, List<TestInfo> testInfos, Map<Class<?>, List<TestInfo>> classToTestInfoMap) throws ClosedChannelException, InterruptedException, TimeoutException, ExecutionException {
+        //TODO: needs cleanup -> get futures more efficiently | establish proper fail strategy & ensure server responds, no crash.
+
         if (testInfos.isEmpty()) {
-            // If we had zero tests to submit then our downstream consumers will never receive anything
-            // and wait forever. In this case, we write the results to the database, respond to the client
-            // and notify the lifecycle listener that we are done.
-            if (!testSuite.testClassPaths.isEmpty()) {
-                writeEmptyClassResultToDatabase(classToTestInfoMap.keySet().iterator().next().getName(), testSuite.suiteId);
+            TestResult emptyResult = TestResult.forEmptySuite(classToTestInfoMap.keySet(), testSuite.suiteId);
+            if (!this.testResultQueue.add(emptyResult, 5, TimeUnit.MINUTES)) {
+                throw new IllegalStateException("Unable to submit test result into queue.");
             }
-            writeSuiteResultToDatabase(testSuite.suiteId);
             sendResponse(testSuite.sessionContext, RunSuiteResponse.newResponse(testSuite.suiteId));
         } else {
-
-            //TODO: needs cleanup -> get futures more efficiently | establish proper fail strategy & ensure server responds, no crash.
-
             List<Future<ExecutionReport>> futureReports = new ArrayList<>();
             for (TestInfo testInfo : testInfos) {
                 if (!this.isAlive) {
@@ -316,25 +314,6 @@ public final class TestSuiteRunner implements Runnable {
             for (TestInfo testInfo : testInfos) {
                 LOGGER.log("Test: " + testInfo);
             }
-        }
-    }
-
-    private void writeEmptyClassResultToDatabase(String testClassName, int suiteDbId) throws SQLException {
-        if (this.dbConnection != null) {
-            Statement statement = this.dbConnection.createStatement();
-            statement.execute("INSERT INTO test_class(id, name, num_tests, num_success, num_failures, duration, suite)"
-                    + " VALUES(0, '" + testClassName + "', 0, 0, 0, 0, " + suiteDbId + ")");
-        }
-    }
-
-    private void writeSuiteResultToDatabase(int suiteDbId) throws SQLException {
-        if (this.dbConnection != null) {
-            Statement statement = this.dbConnection.createStatement();
-            statement.execute("UPDATE test_suite SET num_tests = 0, "
-                    + " num_success = 0, "
-                    + " num_failures = 0, "
-                    + " duration = 0"
-                    + " WHERE id = " + suiteDbId);
         }
     }
 

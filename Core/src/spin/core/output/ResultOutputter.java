@@ -91,6 +91,15 @@ public final class ResultOutputter implements Runnable {
                 if (result != null) {
                     LOGGER.log("New result obtained.");
 
+                    // If we were given an empty suite then we can do all our work right here now.
+                    if (result.isEmptySuite) {
+                        if (!result.emptyClasses.isEmpty()) {
+                            writeEmptyClassResultToDatabase(result.emptyClasses.iterator().next().getName(), result.testSuiteDbId);
+                        }
+                        writeEmptySuiteResultToDatabase(result.testSuiteDbId);
+                        break;
+                    }
+
                     // Report the test as successful or failed.
                     System.out.println("\nTEST RESULT:");
                     if (result.successful) {
@@ -219,6 +228,25 @@ public final class ResultOutputter implements Runnable {
                     + " num_failures = " + testResult.testSuiteDetails.getTotalNumFailedTests() + ", "
                     + " duration = " + testResult.testSuiteDetails.getTotalSuiteDuration()
                     + " WHERE id = " + testResult.testSuiteDbId);
+        }
+    }
+
+    private void writeEmptyClassResultToDatabase(String testClassName, int suiteDbId) throws SQLException {
+        if (this.dbConnection != null) {
+            Statement statement = this.dbConnection.createStatement();
+            statement.execute("INSERT INTO test_class(id, name, num_tests, num_success, num_failures, duration, suite)"
+                    + " VALUES(0, '" + testClassName + "', 0, 0, 0, 0, " + suiteDbId + ")");
+        }
+    }
+
+    private void writeEmptySuiteResultToDatabase(int suiteDbId) throws SQLException {
+        if (this.dbConnection != null) {
+            Statement statement = this.dbConnection.createStatement();
+            statement.execute("UPDATE test_suite SET num_tests = 0, "
+                    + " num_success = 0, "
+                    + " num_failures = 0, "
+                    + " duration = 0"
+                    + " WHERE id = " + suiteDbId);
         }
     }
 
