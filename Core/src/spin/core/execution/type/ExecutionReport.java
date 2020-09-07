@@ -1,40 +1,41 @@
 package spin.core.execution.type;
 
+import spin.core.output.ExecutionStatus;
 import spin.core.util.ObjectChecker;
 
 /**
  * A report detailing the outcome of executing an {@link ExecutionTask}.
  *
- * {@link ExecutionReport#isSuccessful}: whether or not the task executed successfully.
+ * {@link ExecutionReport#status}: the execution status of the executed task.
  * {@link ExecutionReport#executionDurationNanos}: the duration in nanoseconds the task took to execute.
- * {@link ExecutionReport#stdout}: the contents written to stdout during the execution of the task.
- * {@link ExecutionReport#stderr}: the contents written to stderr during the execution of the task.
+ * {@link ExecutionReport#testStdout}: the contents written to stdout during the execution of the task.
+ * {@link ExecutionReport#testStderr}: the contents written to stderr during the execution of the task.
  */
 public final class ExecutionReport {
-    public final boolean isSuccessful;
+    public final ExecutionStatus status;
     public final long executionDurationNanos;
-    public final String stdout;
-    public final String stderr;
+    public final byte[] testStdout;
+    public final byte[] testStderr;
 
-    private ExecutionReport(boolean isSuccessful, long executionDurationNanos, String stdout, String stderr) {
-        this.isSuccessful = isSuccessful;
+    private ExecutionReport(ExecutionStatus status, long executionDurationNanos, byte[] stdout, byte[] stderr) {
+        this.status = status;
         this.executionDurationNanos = executionDurationNanos;
-        this.stdout = stdout;
-        this.stderr = stderr;
+        this.testStdout = stdout;
+        this.testStderr = stderr;
     }
 
     public static final class Builder {
-        private Boolean isSuccessful;
+        private ExecutionStatus status;
         private Long executionDurationNanos;
-        private String stdout;
-        private String stderr;
+        private byte[] stdout;
+        private byte[] stderr;
 
         public static Builder newBuilder() {
             return new Builder();
         }
 
-        public Builder isSuccessful(boolean isSuccessful) {
-            this.isSuccessful = isSuccessful;
+        public Builder executionStatus(ExecutionStatus status) {
+            this.status = status;
             return this;
         }
 
@@ -43,19 +44,19 @@ public final class ExecutionReport {
             return this;
         }
 
-        public Builder executionStdout(String stdout) {
+        public Builder executionStdout(byte[] stdout) {
             this.stdout = stdout;
             return this;
         }
 
-        public Builder executionStderr(String stderr) {
+        public Builder executionStderr(byte[] stderr) {
             this.stderr = stderr;
             return this;
         }
 
         public ExecutionReport build() {
-            ObjectChecker.assertNonNull(this.isSuccessful, this.executionDurationNanos, this.stdout, this.stderr);
-            return new ExecutionReport(this.isSuccessful, this.executionDurationNanos, this.stdout, this.stderr);
+            ObjectChecker.assertNonNull(this.status, this.executionDurationNanos, this.stdout, this.stderr);
+            return new ExecutionReport(this.status, this.executionDurationNanos, this.stdout, this.stderr);
         }
     }
 }

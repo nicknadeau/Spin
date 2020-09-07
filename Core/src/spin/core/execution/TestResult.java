@@ -1,6 +1,7 @@
 package spin.core.execution;
 
 import spin.core.execution.type.ExecutionReport;
+import spin.core.output.ExecutionStatus;
 import spin.core.server.session.RequestSessionContext;
 import spin.core.runner.TestSuiteDetails;
 import spin.core.util.ObjectChecker;
@@ -22,24 +23,24 @@ public final class TestResult {
     public final Collection<Class<?>> emptyClasses;
     public final Class<?> testClass;
     public final Method testMethod;
-    public final boolean successful;
+    public final ExecutionStatus status;
     public final long durationNanos;
-    public final String stdout;
-    public final String stderr;
+    public final byte[] testStdout;
+    public final byte[] testStderr;
     public final TestSuiteDetails testSuiteDetails;
     public final RequestSessionContext sessionContext;
     public final int testSuiteDbId;
     public final int testClassDbId;
 
-    private TestResult(boolean isEmptySuite, Collection<Class<?>> emptyClasses, Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext, int testSuiteDbId, int testClassDbId) {
+    private TestResult(boolean isEmptySuite, Collection<Class<?>> emptyClasses, Class<?> testClass, Method testMethod, ExecutionStatus status, long durationNanos, byte[] stdout, byte[] stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext, int testSuiteDbId, int testClassDbId) {
         this.isEmptySuite = isEmptySuite;
         this.emptyClasses = emptyClasses;
         this.testClass = testClass;
         this.testMethod = testMethod;
-        this.successful = successful;
+        this.status = status;
         this.durationNanos = durationNanos;
-        this.stdout = stdout;
-        this.stderr = stderr;
+        this.testStdout = stdout;
+        this.testStderr = stderr;
         this.testSuiteDetails = testSuiteDetails;
         this.sessionContext = sessionContext;
         this.testSuiteDbId = testSuiteDbId;
@@ -47,12 +48,12 @@ public final class TestResult {
     }
 
     public static TestResult forEmptySuite(Collection<Class<?>> emptyClasses, int testSuiteDbId) {
-        return new TestResult(true, emptyClasses, null, null, false, 0, null, null, null, null, testSuiteDbId, -1);
+        return new TestResult(true, emptyClasses, null, null, ExecutionStatus.SUCCESS, 0, null, null, null, null, testSuiteDbId, -1);
     }
 
     @Override
     public String toString() {
-        return this.getClass().getName() + " { class: " + this.testClass.getName() + ", method: " + this.testMethod.getName() + ", successful: " + this.successful + " }";
+        return this.getClass().getName() + " { class: " + this.testClass.getName() + ", method: " + this.testMethod.getName() + ", status: " + this.status + " }";
     }
 
     public static final class Builder {
@@ -80,10 +81,10 @@ public final class TestResult {
                     null,
                     this.testInfo.testClass,
                     this.testInfo.method,
-                    this.executionReport.isSuccessful,
+                    this.executionReport.status,
                     this.executionReport.executionDurationNanos,
-                    this.executionReport.stdout,
-                    this.executionReport.stderr,
+                    this.executionReport.testStdout,
+                    this.executionReport.testStderr,
                     this.testInfo.testSuiteDetails,
                     this.testInfo.sessionContext,
                     this.testInfo.getTestSuiteDatabaseId(),

@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -102,25 +103,24 @@ public final class ResultOutputter implements Runnable {
 
                     // Report the test as successful or failed.
                     System.out.println("\nTEST RESULT:");
-                    if (result.successful) {
-                        System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
-                        System.out.println("\tSUCCESS, duration: " + nanosToSecondsString(result.durationNanos));
+                    System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
+                    System.out.println("\t" + ExecutionStatus.SUCCESS + ", duration: " + nanosToSecondsString(result.durationNanos));
+
+                    if (result.status == ExecutionStatus.SUCCESS) {
                         result.testSuiteDetails.incrementNumSuccessfulTestsInClass(result.testClass, result.durationNanos);
                     } else {
-                        System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
-                        System.out.println("\tFAILED, duration: " + nanosToSecondsString(result.durationNanos));
                         result.testSuiteDetails.incrementNumFailedTestsInClass(result.testClass, result.durationNanos);
                     }
 
                     // Display the test's output.
-                    if (!result.stdout.isEmpty()) {
+                    if (result.testStdout.length > 0) {
                         System.out.println("\t---- stdout ----");
-                        System.out.print(result.stdout);
+                        System.out.print(new String(result.testStdout, StandardCharsets.UTF_8));
                         System.out.println("\t----------------");
                     }
-                    if (!result.stderr.isEmpty()) {
+                    if (result.testStderr.length > 0) {
                         System.err.println("\t---- stderr ----");
-                        System.err.print(result.stderr);
+                        System.err.print(new String(result.testStderr, StandardCharsets.UTF_8));
                         System.err.println("\t----------------");
                     }
                     writeTestResultToDatabase(result);
@@ -200,9 +200,9 @@ public final class ResultOutputter implements Runnable {
             Statement statement = this.dbConnection.createStatement();
             statement.execute("INSERT INTO test(name, is_success, stdout, stderr, duration, class) VALUES('"
                     + testResult.testMethod.getName() + "', '"
-                    + (testResult.successful ? 1 : 0) + "', '"
-                    + testResult.stdout + "', '"
-                    + testResult.stderr + "', "
+                    + (testResult.status == ExecutionStatus.SUCCESS ? 1 : 0) + "', '"
+                    + new String(testResult.testStdout, StandardCharsets.UTF_8) + "', '"
+                    + new String(testResult.testStderr, StandardCharsets.UTF_8) + "', "
                     + testResult.durationNanos + ", "
                     + testResult.testClassDbId + ")");
         }
