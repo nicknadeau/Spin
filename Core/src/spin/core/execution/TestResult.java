@@ -46,25 +46,25 @@ public final class TestResult {
         return this.getClass().getName() + " { class: " + this.testClass.getName() + ", method: " + this.testMethod.getName() + ", successful: " + this.successful + " }";
     }
 
-    static final class Builder {
+    public static final class Builder {
         private TestInfo testInfo;
         private ExecutionReport executionReport;
 
-        static Builder newBuilder() {
+        public static Builder newBuilder() {
             return new Builder();
         }
 
-        Builder fromExecutionReport(ExecutionReport report) {
+        public Builder fromExecutionReport(ExecutionReport report) {
             this.executionReport = report;
             return this;
         }
 
-        Builder fromTestInfo(TestInfo testInfo) {
+        public Builder fromTestInfo(TestInfo testInfo) {
             this.testInfo = testInfo;
             return this;
         }
 
-        TestResult build() {
+        public TestResult build() {
             ObjectChecker.assertNonNull(this.executionReport, this.testInfo);
             return new TestResult(
                     this.testInfo.testClass,

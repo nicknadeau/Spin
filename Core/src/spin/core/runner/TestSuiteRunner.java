@@ -1,5 +1,8 @@
 package spin.core.runner;
 
+import spin.core.execution.TestExecutor;
+import spin.core.execution.TestResult;
+import spin.core.execution.type.ExecutionReport;
 import spin.core.lifecycle.PanicOnlyMonitor;
 import spin.core.server.session.RequestSessionContext;
 import spin.core.server.request.RunSuiteClientRequest;
@@ -21,62 +24,41 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.regex.Pattern;
 
 /**
  * A class that is responsible for receiving a {@link RunSuiteClientRequest} object and for loading all of the test suite
- * classes, constructing whatever additional information is required, and handing these tests off to any of the outgoing
- * queues it has so that they may be picked up with all the required context by some downstream consumer.
+ * classes, constructing whatever additional information is required, and handing these tests off to the
+ * {@link TestExecutor} to execute.
  */
 public final class TestSuiteRunner implements Runnable {
     private static final Logger LOGGER = Logger.forClass(TestSuiteRunner.class);
     private final Object monitor = new Object();
     private final PanicOnlyMonitor shutdownMonitor;
     private final CyclicBarrier barrier;
-    private final List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues;
+    private final TestExecutor testExecutor;
+    private final CloseableBlockingQueue<TestResult> testResultQueue;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
     private RunRequest runRequest = null;
 
-    private TestSuiteRunner(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
-        ObjectChecker.assertNonNull(barrier, shutdownMonitor, outgoingTestQueues);
+    private TestSuiteRunner(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, TestExecutor testExecutor, CloseableBlockingQueue<TestResult> testResultQueue, Connection dbConnection) {
+        ObjectChecker.assertNonNull(barrier, shutdownMonitor, testExecutor, testResultQueue);
         this.barrier = barrier;
         this.shutdownMonitor = shutdownMonitor;
-        this.outgoingTestQueues = outgoingTestQueues;
+        this.testExecutor = testExecutor;
+        this.testResultQueue = testResultQueue;
         this.dbConnection = dbConnection;
     }
 
-    /**
-     * Constructs a new suite runner that will put all of the tests it receives into the given outgoing queues.
-     * It will attempt to add tests to these queues fairly so that they each receive a roughly equal load.
-     *
-     * @param barrier The barrier to wait on before running.
-     * @param shutdownMonitor The shutdown monitor.
-     * @param outgoingTestQueues The queues to load the tests into.
-     * @return the suite runner.
-     */
-    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues) {
-        return new TestSuiteRunner(barrier, shutdownMonitor, outgoingTestQueues, null);
+    public static TestSuiteRunner withOutgoingQueue(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, TestExecutor testExecutor, CloseableBlockingQueue<TestResult> testResultQueue) {
+        return new TestSuiteRunner(barrier, shutdownMonitor, testExecutor, testResultQueue, null);
     }
 
-    /**
-     * Constructs a new suite runner that will put all of the tests it receives into the given queues. It will attempt
-     * to add tests to these queues fairly so that they each receive a roughly equal load.
-     *
-     * This test suite will write all of the tests, test classes and suites it receives into a database using the given
-     * database writer.
-     *
-     * @param barrier The barrier to wait on before running.
-     * @param shutdownMonitor The shutdown monitor.
-     * @param outgoingTestQueues The queues to load the tests into.
-     * @param dbConnection The database connection.
-     * @return the suite runner.
-     */
-    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestInfo>> outgoingTestQueues, Connection dbConnection) {
+    public static TestSuiteRunner withDatabaseWriter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, TestExecutor testExecutor, CloseableBlockingQueue<TestResult> testResultQueue, Connection dbConnection) {
         ObjectChecker.assertNonNull(dbConnection);
-        return new TestSuiteRunner(barrier, shutdownMonitor, outgoingTestQueues, dbConnection);
+        return new TestSuiteRunner(barrier, shutdownMonitor, testExecutor, testResultQueue, dbConnection);
     }
 
     @Override
@@ -221,7 +203,7 @@ public final class TestSuiteRunner implements Runnable {
         return new TestSuite(classNames, classLoader, runRequest.request.getSessionContext(), runRequest.id);
     }
 
-    private void runTests(TestSuite testSuite, List<TestInfo> testInfos, Map<Class<?>, List<TestInfo>> classToTestInfoMap) throws SQLException, ClosedChannelException, InterruptedException {
+    private void runTests(TestSuite testSuite, List<TestInfo> testInfos, Map<Class<?>, List<TestInfo>> classToTestInfoMap) throws SQLException, ClosedChannelException, InterruptedException, TimeoutException, ExecutionException {
         if (testInfos.isEmpty()) {
             // If we had zero tests to submit then our downstream consumers will never receive anything
             // and wait forever. In this case, we write the results to the database, respond to the client
@@ -232,27 +214,33 @@ public final class TestSuiteRunner implements Runnable {
             writeSuiteResultToDatabase(testSuite.suiteId);
             sendResponse(testSuite.sessionContext, RunSuiteResponse.newResponse(testSuite.suiteId));
         } else {
-            int index = 0;
-            while (index < testInfos.size()) {
+
+            //TODO: needs cleanup -> get futures more efficiently | establish proper fail strategy & ensure server responds, no crash.
+
+            List<Future<ExecutionReport>> futureReports = new ArrayList<>();
+            for (TestInfo testInfo : testInfos) {
                 if (!this.isAlive) {
-                    break;
+                    return;
                 }
 
-                for (CloseableBlockingQueue<TestInfo> outgoingTestQueue : this.outgoingTestQueues) {
-                    if (!this.isAlive) {
-                        break;
-                    }
+                LOGGER.log("Submitting test --> " + testInfo.testClass.getSimpleName() + ":" + testInfo.method.getName());
+                futureReports.add(this.testExecutor.runTest(testInfo));
+            }
 
-                    LOGGER.log("Attempting to submit test #" + (index + 1) + " of " + testInfos.size());
-                    if (outgoingTestQueue.add(testInfos.get(index), 15, TimeUnit.SECONDS)) {
-                        LOGGER.log("Submitted test #" + (index + 1));
-                        index++;
-                    }
+            int index = 0;
+            for (Future<ExecutionReport> futureReport : futureReports) {
+                ExecutionReport report = futureReport.get(5, TimeUnit.MINUTES);
 
-                    if (index >= testInfos.size()) {
-                        break;
-                    }
+                TestResult testResult = TestResult.Builder.newBuilder()
+                        .fromTestInfo(testInfos.get(index))
+                        .fromExecutionReport(report)
+                        .build();
+
+                if (!this.testResultQueue.add(testResult, 1, TimeUnit.MINUTES)) {
+                    throw new IllegalStateException("Unable to submit test result into queue.");
                 }
+
+                index++;
             }
         }
     }

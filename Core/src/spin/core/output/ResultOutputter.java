@@ -17,60 +17,56 @@ import java.nio.channels.SelectionKey;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.List;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 
 /**
  * The class that is responsible for outputting the test results to the console.
- *
- * This class has a finite amount of work to do and when it is complete it will notify its life-cycle listener via its
- * {@link PanicOnlyMonitor}.
  */
 public final class ResultOutputter implements Runnable {
     private static final Logger LOGGER = Logger.forClass(ResultOutputter.class);
     private final CyclicBarrier barrier;
     private final PanicOnlyMonitor shutdownMonitor;
-    private final List<CloseableBlockingQueue<TestResult>> incomingResultQueues;
+    private final CloseableBlockingQueue<TestResult> resultQueue;
     private final Connection dbConnection;
     private volatile boolean isAlive = true;
 
-    private ResultOutputter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
-        ObjectChecker.assertNonNull(barrier, shutdownMonitor, incomingResultQueues);
+    private ResultOutputter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, CloseableBlockingQueue<TestResult> resultQueue, Connection dbConnection) {
+        ObjectChecker.assertNonNull(barrier, shutdownMonitor, resultQueue);
         this.barrier = barrier;
         this.shutdownMonitor = shutdownMonitor;
-        this.incomingResultQueues = incomingResultQueues;
+        this.resultQueue = resultQueue;
         this.dbConnection = dbConnection;
     }
 
     /**
      * Creates a new result outputter that expects to witness the specified number of tests per each class as given by
-     * the mapping and which expects to find all of the test results on the list of queues given to it.
+     * the mapping and which expects to find all of the test results on the queue given to it.
      *
      * @param barrier The barrier to wait on before running.
      * @param shutdownMonitor The shutdown monitor.
-     * @param incomingResultQueues The queues that test results may be coming in on asynchronously.
+     * @param resultQueue The queue that test results may be coming in on asynchronously.
      * @return the new outputter.
      */
-    public static ResultOutputter outputter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues) {
-        return new ResultOutputter(barrier, shutdownMonitor, incomingResultQueues, null);
+    public static ResultOutputter outputter(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, CloseableBlockingQueue<TestResult> resultQueue) {
+        return new ResultOutputter(barrier, shutdownMonitor, resultQueue, null);
     }
 
     /**
      * Creates a new result outputter that expects to witness the specified number of tests per each class as given by
-     * the mapping and which expects to find all of the test results on the list of queues given to it.
+     * the mapping and which expects to find all of the test results on the queue given to it.
      *
      * As each entry comes in it will be written to a database using the database writer.
      *
      * @param barrier The barrier to wait on before running.
      * @param shutdownMonitor The shutdown monitor.
-     * @param incomingResultQueues The queues that test results may be coming in on asynchronously.
+     * @param resultQueue The queue that test results may be coming in on asynchronously.
      * @param dbConnection The database connection.
      * @return the new outputter.
      */
-    public static ResultOutputter outputterToConsoleAndDb(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, List<CloseableBlockingQueue<TestResult>> incomingResultQueues, Connection dbConnection) {
+    public static ResultOutputter outputterToConsoleAndDb(CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor, CloseableBlockingQueue<TestResult> resultQueue, Connection dbConnection) {
         ObjectChecker.assertNonNull(dbConnection);
-        return new ResultOutputter(barrier, shutdownMonitor, incomingResultQueues, dbConnection);
+        return new ResultOutputter(barrier, shutdownMonitor, resultQueue, dbConnection);
     }
 
     @Override
@@ -84,65 +80,63 @@ public final class ResultOutputter implements Runnable {
 
             System.out.println("\n===============================================================");
             while (this.isAlive) {
-                for (CloseableBlockingQueue<TestResult> incomingResultQueue : this.incomingResultQueues) {
-                    if (!this.isAlive) {
-                        break;
+                if (!this.isAlive) {
+                    break;
+                }
+
+                LOGGER.log("Checking for new results...");
+
+                result = this.resultQueue.poll(5, TimeUnit.MINUTES);
+
+                if (result != null) {
+                    LOGGER.log("New result obtained.");
+
+                    // Report the test as successful or failed.
+                    System.out.println("\nTEST RESULT:");
+                    if (result.successful) {
+                        System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
+                        System.out.println("\tSUCCESS, duration: " + nanosToSecondsString(result.durationNanos));
+                        result.testSuiteDetails.incrementNumSuccessfulTestsInClass(result.testClass, result.durationNanos);
+                    } else {
+                        System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
+                        System.out.println("\tFAILED, duration: " + nanosToSecondsString(result.durationNanos));
+                        result.testSuiteDetails.incrementNumFailedTestsInClass(result.testClass, result.durationNanos);
                     }
 
-                    LOGGER.log("Checking for new results...");
+                    // Display the test's output.
+                    if (!result.stdout.isEmpty()) {
+                        System.out.println("\t---- stdout ----");
+                        System.out.print(result.stdout);
+                        System.out.println("\t----------------");
+                    }
+                    if (!result.stderr.isEmpty()) {
+                        System.err.println("\t---- stderr ----");
+                        System.err.print(result.stderr);
+                        System.err.println("\t----------------");
+                    }
+                    writeTestResultToDatabase(result);
 
-                    result = incomingResultQueue.poll(5, TimeUnit.MINUTES);
+                    // If all tests in class are complete then report the class as finished.
+                    if (result.testSuiteDetails.isClassComplete(result.testClass)) {
+                        System.out.println("\nCLASS RESULT:");
+                        System.out.println("\tClass: " + result.testClass.getName());
+                        System.out.println("\tTests: " + result.testSuiteDetails.getNumTestsInClass(result.testClass) + ", Successes: " + result.testSuiteDetails.getTotalNumSuccessfulTestsInClass(result.testClass) + ", failures: " + result.testSuiteDetails.getTotalNumFailedTestsInClass(result.testClass));
+                        System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalDurationForClass(result.testClass)));
+                        writeClassResultToDatabase(result);
+                        LOGGER.log("Witnessed all tests in class: " + result.testClass.getName());
+                    }
 
-                    if (result != null) {
-                        LOGGER.log("New result obtained.");
+                    // If all test classes are complete then report the suite as finished and exit.
+                    if (result.testSuiteDetails.isSuiteComplete()) {
+                        System.out.println("\nSUITE RESULT:");
+                        System.out.println("\tTests: " + result.testSuiteDetails.getTotalNumTests() + ", successes: " + result.testSuiteDetails.getTotalNumSuccessfulTests() + ", failures: " + result.testSuiteDetails.getTotalNumFailedTests());
+                        System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalSuiteDuration()));
+                        writeSuiteResultToDatabase(result);
 
-                        // Report the test as successful or failed.
-                        System.out.println("\nTEST RESULT:");
-                        if (result.successful) {
-                            System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
-                            System.out.println("\tSUCCESS, duration: " + nanosToSecondsString(result.durationNanos));
-                            result.testSuiteDetails.incrementNumSuccessfulTestsInClass(result.testClass, result.durationNanos);
-                        } else {
-                            System.out.println("\tTest: " + result.testMethod.getName() + ", Class: " + result.testClass.getName());
-                            System.out.println("\tFAILED, duration: " + nanosToSecondsString(result.durationNanos));
-                            result.testSuiteDetails.incrementNumFailedTestsInClass(result.testClass, result.durationNanos);
-                        }
-
-                        // Display the test's output.
-                        if (!result.stdout.isEmpty()) {
-                            System.out.println("\t---- stdout ----");
-                            System.out.print(result.stdout);
-                            System.out.println("\t----------------");
-                        }
-                        if (!result.stderr.isEmpty()) {
-                            System.err.println("\t---- stderr ----");
-                            System.err.print(result.stderr);
-                            System.err.println("\t----------------");
-                        }
-                        writeTestResultToDatabase(result);
-
-                        // If all tests in class are complete then report the class as finished.
-                        if (result.testSuiteDetails.isClassComplete(result.testClass)) {
-                            System.out.println("\nCLASS RESULT:");
-                            System.out.println("\tClass: " + result.testClass.getName());
-                            System.out.println("\tTests: " + result.testSuiteDetails.getNumTestsInClass(result.testClass) + ", Successes: " + result.testSuiteDetails.getTotalNumSuccessfulTestsInClass(result.testClass) + ", failures: " + result.testSuiteDetails.getTotalNumFailedTestsInClass(result.testClass));
-                            System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalDurationForClass(result.testClass)));
-                            writeClassResultToDatabase(result);
-                            LOGGER.log("Witnessed all tests in class: " + result.testClass.getName());
-                        }
-
-                        // If all test classes are complete then report the suite as finished and exit.
-                        if (result.testSuiteDetails.isSuiteComplete()) {
-                            System.out.println("\nSUITE RESULT:");
-                            System.out.println("\tTests: " + result.testSuiteDetails.getTotalNumTests() + ", successes: " + result.testSuiteDetails.getTotalNumSuccessfulTests() + ", failures: " + result.testSuiteDetails.getTotalNumFailedTests());
-                            System.out.println("\tDuration: " + nanosToSecondsString(result.testSuiteDetails.getTotalSuiteDuration()));
-                            writeSuiteResultToDatabase(result);
-
-                            sendResponse(result.sessionContext, RunSuiteResponse.newResponse(result.testSuiteDbId));
-                            LOGGER.log("Witnessed all tests in suite.");
-                            this.isAlive = false;
-                            break;
-                        }
+                        sendResponse(result.sessionContext, RunSuiteResponse.newResponse(result.testSuiteDbId));
+                        LOGGER.log("Witnessed all tests in suite.");
+                        this.isAlive = false;
+                        break;
                     }
                 }
             }

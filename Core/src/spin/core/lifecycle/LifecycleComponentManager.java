@@ -5,7 +5,6 @@ import spin.core.server.Server;
 import spin.core.server.handler.RequestHandler;
 import spin.core.server.request.parse.JsonClientRequestParser;
 import spin.core.execution.TestExecutor;
-import spin.core.execution.TestInfo;
 import spin.core.execution.TestResult;
 import spin.core.output.DatabaseConnectionProvider;
 import spin.core.output.ResultOutputter;
@@ -19,9 +18,8 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 
 public final class LifecycleComponentManager {
     private static final Logger LOGGER = Logger.forClass(LifecycleComponentManager.class);
@@ -29,16 +27,14 @@ public final class LifecycleComponentManager {
     private final ShutdownMonitor shutdownMonitor;
     private final LifecycleComponentConfig config;
     private State state = State.PRE_INIT;
-    private List<CloseableBlockingQueue<TestInfo>> testInfoQueues;
-    private List<CloseableBlockingQueue<TestResult>> testResultQueues;
+    private CloseableBlockingQueue<TestResult> testResultQueue;
     private Server server;
     private TestSuiteRunner testSuiteRunner;
     private ResultOutputter resultOutputter;
-    private List<TestExecutor> testExecutors;
+    private TestExecutor testExecutor;
     private Thread serverThread;
     private Thread suiteRunnerThread;
     private Thread outputterThread;
-    private List<Thread> executorThreads;
 
     private LifecycleComponentManager(LifecycleComponentConfig config) {
         ObjectChecker.assertNonNull(config);
@@ -75,19 +71,18 @@ public final class LifecycleComponentManager {
             }
         }
 
-        CyclicBarrier barrier = new CyclicBarrier(this.config.numExecutorThreads + 3);
+        CyclicBarrier barrier = new CyclicBarrier(3);
         PanicOnlyMonitor panicMonitor = PanicOnlyMonitor.wrapForPanicsOnly(this.shutdownMonitor);
         ShutdownOnlyMonitor shutdownOnlyMonitor = ShutdownOnlyMonitor.wrapForGracefulShutdownsOnly(this.shutdownMonitor);
+        this.testResultQueue = CloseableBlockingQueue.withCapacity(this.config.interComponentQueueCapacity);
 
-        this.testInfoQueues = createTestQueues();
-        this.testResultQueues = createTestResultQueues();
-        this.testExecutors = createExecutors(this.testInfoQueues, this.testResultQueues, barrier, panicMonitor);
+        this.testExecutor = new TestExecutor(this.config.numExecutorThreads);
         this.resultOutputter = (this.config.doOutputToDatabase)
-                ? ResultOutputter.outputterToConsoleAndDb(barrier, panicMonitor, this.testResultQueues, databaseConnectionProvider.getConnection())
-                : ResultOutputter.outputter(barrier, panicMonitor, this.testResultQueues);
+                ? ResultOutputter.outputterToConsoleAndDb(barrier, panicMonitor, this.testResultQueue, databaseConnectionProvider.getConnection())
+                : ResultOutputter.outputter(barrier, panicMonitor, this.testResultQueue);
         this.testSuiteRunner = (this.config.doOutputToDatabase)
-                ? TestSuiteRunner.withDatabaseWriter(barrier, panicMonitor, this.testInfoQueues, databaseConnectionProvider.getConnection())
-                : TestSuiteRunner.withOutgoingQueue(barrier, panicMonitor, this.testInfoQueues);
+                ? TestSuiteRunner.withDatabaseWriter(barrier, panicMonitor, this.testExecutor, this.testResultQueue, databaseConnectionProvider.getConnection())
+                : TestSuiteRunner.withOutgoingQueue(barrier, panicMonitor, this.testExecutor, this.testResultQueue);
 
         TestRunner testRunner = TestRunner.wrap(this.testSuiteRunner);
 
@@ -113,14 +108,10 @@ public final class LifecycleComponentManager {
         this.serverThread = new Thread(this.server, "Server");
         this.outputterThread = new Thread(this.resultOutputter, "ResultOutputter");
         this.suiteRunnerThread = new Thread(this.testSuiteRunner, "TestSuiteRunner");
-        this.executorThreads = createExecutorThreads(this.testExecutors);
 
         this.serverThread.start();
         this.outputterThread.start();
         this.suiteRunnerThread.start();
-        for (Thread executorThread : this.executorThreads) {
-            executorThread.start();
-        }
 
         ProgramInfoWriter.publish(this.server.getPort());
 
@@ -131,11 +122,11 @@ public final class LifecycleComponentManager {
     void shutdownAllComponents() {
         if (this.state == State.STARTED) {
             LOGGER.log("Shutting down all life-cycled components...");
-            closeQueues();
+            this.testResultQueue.close();
             LOGGER.log("All queues closed.\nShutting down server...");
             this.server.shutdown();
             LOGGER.log("Server shut down.\nShutting down test executors...");
-            shutdownExecutors();
+            this.testExecutor.shutdown();
             LOGGER.log("All test executors shut down.\nShutting down suite runner...");
             this.testSuiteRunner.shutdown();
             LOGGER.log("Suite runner shut down.");
@@ -157,70 +148,8 @@ public final class LifecycleComponentManager {
 
         this.serverThread.join();
         this.outputterThread.join();
-        waitForAllExecutorsToShutdown();
+        this.testExecutor.waitUntilShutdown(10, TimeUnit.SECONDS);
         this.suiteRunnerThread.join();
-    }
-
-    private void waitForAllExecutorsToShutdown() throws InterruptedException {
-        for (Thread executor : this.executorThreads) {
-            executor.join();
-        }
-    }
-
-    private void closeQueues() {
-        for (CloseableBlockingQueue<TestResult> resultQueue : this.testResultQueues) {
-            resultQueue.close();
-        }
-        for (CloseableBlockingQueue<TestInfo> testQueue : this.testInfoQueues) {
-            testQueue.close();
-        }
-    }
-
-    private void shutdownExecutors() {
-        for (TestExecutor executor : this.testExecutors) {
-            executor.shutdown();
-        }
-    }
-
-    private List<Thread> createExecutorThreads(List<TestExecutor> executors) {
-        List<Thread> threads = new ArrayList<>();
-        int index = 0;
-        for (TestExecutor executor : executors) {
-            threads.add(new Thread(executor, "TestExecutor-" + index));
-            index++;
-        }
-        return threads;
-    }
-
-    private List<CloseableBlockingQueue<TestInfo>> createTestQueues() {
-        List<CloseableBlockingQueue<TestInfo>> queues = new ArrayList<>();
-        for (int i = 0; i < this.config.numExecutorThreads; i++) {
-            queues.add(CloseableBlockingQueue.withCapacity(this.config.interComponentQueueCapacity));
-        }
-        return queues;
-    }
-
-    private List<CloseableBlockingQueue<TestResult>> createTestResultQueues() {
-        List<CloseableBlockingQueue<TestResult>> queues = new ArrayList<>();
-        for (int i = 0; i < this.config.numExecutorThreads; i++) {
-            queues.add(CloseableBlockingQueue.withCapacity(this.config.interComponentQueueCapacity));
-        }
-        return queues;
-    }
-
-    private List<TestExecutor> createExecutors(List<CloseableBlockingQueue<TestInfo>> testsQueues, List<CloseableBlockingQueue<TestResult>> resultsQueues, CyclicBarrier barrier, PanicOnlyMonitor shutdownMonitor) {
-        if (testsQueues.size() != resultsQueues.size()) {
-            throw new IllegalArgumentException("num tests queues (" + testsQueues.size() + ") != num results queues (" + resultsQueues.size() + ").");
-        }
-        if (testsQueues.size() != this.config.numExecutorThreads) {
-            throw new IllegalArgumentException("num tests queues (" + testsQueues.size() + ") != num executor threads (" + this.config.numExecutorThreads + ").");
-        }
-
-        List<TestExecutor> executors = new ArrayList<>();
-        for (int i = 0; i < this.config.numExecutorThreads; i++) {
-            executors.add(TestExecutor.withQueues(barrier, shutdownMonitor, testsQueues.get(i), resultsQueues.get(i)));
-        }
-        return executors;
     }
 
     private void clearDatabase(Connection connection) throws SQLException {
