@@ -218,7 +218,7 @@ public final class LifecycleComponentManager {
 
         List<TestExecutor> executors = new ArrayList<>();
         for (int i = 0; i < this.config.numExecutorThreads; i++) {
-            executors.add(TestExecutor.withQueues(barrier, shutdownMonitor, testsQueues.get(i), resultsQueues.get(i), this.config.doOutputToDatabase));
+            executors.add(TestExecutor.withQueues(barrier, shutdownMonitor, testsQueues.get(i), resultsQueues.get(i)));
         }
         return executors;
     }

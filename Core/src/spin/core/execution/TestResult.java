@@ -1,7 +1,9 @@
 package spin.core.execution;
 
+import spin.core.execution.type.ExecutionReport;
 import spin.core.server.session.RequestSessionContext;
 import spin.core.runner.TestSuiteDetails;
+import spin.core.util.ObjectChecker;
 
 import java.lang.reflect.Method;
 
@@ -39,16 +41,43 @@ public final class TestResult {
         this.testClassDbId = testClassDbId;
     }
 
-    static TestResult withDatabaseId(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext, int testSuiteDbId, int testClassDbId) {
-        return new TestResult(testClass, testMethod, successful, durationNanos, stdout, stderr, testSuiteDetails, sessionContext, testSuiteDbId, testClassDbId);
-    }
-
-    static TestResult result(Class<?> testClass, Method testMethod, boolean successful, long durationNanos, String stdout, String stderr, TestSuiteDetails testSuiteDetails, RequestSessionContext sessionContext) {
-        return new TestResult(testClass, testMethod, successful, durationNanos, stdout, stderr, testSuiteDetails, sessionContext, -1, -1);
-    }
-
     @Override
     public String toString() {
         return this.getClass().getName() + " { class: " + this.testClass.getName() + ", method: " + this.testMethod.getName() + ", successful: " + this.successful + " }";
+    }
+
+    static final class Builder {
+        private TestInfo testInfo;
+        private ExecutionReport executionReport;
+
+        static Builder newBuilder() {
+            return new Builder();
+        }
+
+        Builder fromExecutionReport(ExecutionReport report) {
+            this.executionReport = report;
+            return this;
+        }
+
+        Builder fromTestInfo(TestInfo testInfo) {
+            this.testInfo = testInfo;
+            return this;
+        }
+
+        TestResult build() {
+            ObjectChecker.assertNonNull(this.executionReport, this.testInfo);
+            return new TestResult(
+                    this.testInfo.testClass,
+                    this.testInfo.method,
+                    this.executionReport.isSuccessful,
+                    this.executionReport.executionDurationNanos,
+                    this.executionReport.stdout,
+                    this.executionReport.stderr,
+                    this.testInfo.testSuiteDetails,
+                    this.testInfo.sessionContext,
+                    this.testInfo.getTestSuiteDatabaseId(),
+                    this.testInfo.getTestClassDatabaseId()
+            );
+        }
     }
 }
